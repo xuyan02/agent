@@ -1,0 +1,164 @@
+cmake_minimum_required(VERSION 3.20)
+project(cpp_agent LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+option(CPP_AGENT_BUILD_TESTS "Build tests" ON)
+
+add_library(cpp_agent_lib
+  src/core/agent.cpp
+  src/core/conversation.cpp
+  src/core/policy.cpp
+  src/core/tool_log.cpp
+  src/app/config.cpp
+  src/infra/http/openai_client.cpp
+  src/infra/plan/plan_model.cpp
+  src/infra/plan/plan_store.cpp
+  src/infra/tools/file_tools.cpp
+  src/infra/tools/plan_toolset.cpp
+  src/infra/tools/shell_tool.cpp
+  src/infra/storage/json_file_storage.cpp
+  src/infra/console/cli_console.cpp
+  src/app/wiring.cpp
+)
+
+target_include_directories(cpp_agent_lib PUBLIC src)
+
+include(ExternalProject)
+
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(CURL_STATICLIB ON CACHE BOOL "" FORCE)
+set(BUILD_CURL_EXE OFF CACHE BOOL "" FORCE)
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(CURL_ENABLE_EXPORT_TARGET OFF CACHE BOOL "" FORCE)
+set(CURL_DISABLE_LDAP ON CACHE BOOL "" FORCE)
+set(CURL_DISABLE_RTSP ON CACHE BOOL "" FORCE)
+set(CURL_DISABLE_TELNET ON CACHE BOOL "" FORCE)
+set(CURL_DISABLE_DICT ON CACHE BOOL "" FORCE)
+set(CURL_DISABLE_FILE ON CACHE BOOL "" FORCE)
+set(CURL_DISABLE_TFTP ON CACHE BOOL "" FORCE)
+set(CURL_DISABLE_POP3 ON CACHE BOOL "" FORCE)
+set(CURL_DISABLE_IMAP ON CACHE BOOL "" FORCE)
+set(CURL_DISABLE_SMTP ON CACHE BOOL "" FORCE)
+set(CURL_DISABLE_MQTT ON CACHE BOOL "" FORCE)
+
+set(CURL_USE_LIBPSL OFF CACHE BOOL "" FORCE)
+
+# Build and vendor OpenSSL (static) for curl TLS.
+#
+# NOTE: curl's CMake consumes OpenSSL via find_package() during *configure*,
+# so we support a two-stage build:
+#   1) Configure with -DCPP_AGENT_BOOTSTRAP_OPENSSL=ON and build target openssl_ep
+#   2) Re-run CMake (same build dir) without CPP_AGENT_BOOTSTRAP_OPENSSL; curl will
+#      find OpenSSL in ${_openssl_install_dir}.
+option(CPP_AGENT_BOOTSTRAP_OPENSSL "Bootstrap vendored OpenSSL only (skip curl/app configure-time OpenSSL use)" OFF)
+
+set(_openssl_install_dir "${CMAKE_BINARY_DIR}/third_party/openssl-install")
+ExternalProject_Add(openssl_ep
+  SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/openssl"
+  CONFIGURE_COMMAND
+    ${CMAKE_COMMAND} -E env
+      PERL=${PERL_EXECUTABLE}
+      ./Configure linux-x86_64
+        no-shared
+        no-tests
+        --prefix=${_openssl_install_dir}
+        --openssldir=${_openssl_install_dir}
+  BUILD_COMMAND ${CMAKE_COMMAND} -E env make -j
+  INSTALL_COMMAND ${CMAKE_COMMAND} -E env make install_sw
+  BUILD_IN_SOURCE 1
+)
+
+# For stage 2, point curl's find_package(OpenSSL) at the vendored install.
+set(OPENSSL_ROOT_DIR "${_openssl_install_dir}" CACHE PATH "" FORCE)
+set(CURL_USE_OPENSSL ON CACHE BOOL "" FORCE)
+set(CURL_USE_SCHANNEL OFF CACHE BOOL "" FORCE)
+set(CURL_USE_SECTRANSP OFF CACHE BOOL "" FORCE)
+set(CURL_USE_MBEDTLS OFF CACHE BOOL "" FORCE)
+set(CURL_USE_WOLFSSL OFF CACHE BOOL "" FORCE)
+set(CURL_USE_GNUTLS OFF CACHE BOOL "" FORCE)
+set(CURL_USE_BEARSSL OFF CACHE BOOL "" FORCE)
+set(CURL_USE_RUSTLS OFF CACHE BOOL "" FORCE)
+
+# zlib vendored as a static library; curl will consume it.
+set(ZLIB_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(ZLIB_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(ZLIB_INSTALL OFF CACHE BOOL "" FORCE)
+set(ZLIB_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+set(ZLIB_BUILD_STATIC ON CACHE BOOL "" FORCE)
+add_subdirectory(third_party/zlib EXCLUDE_FROM_ALL)
+
+if(CPP_AGENT_BOOTSTRAP_OPENSSL)
+  # Stage 1 build: only build vendored OpenSSL.
+  return()
+endif()
+
+# Ensure curl uses the vendored zlib target rather than system libz.
+# curl's configure-time try_compile runs in a fresh project, so ALIAS targets
+# like ZLIB::ZLIB are not visible there. Provide an IMPORTED target instead.
+add_library(ZLIB::ZLIB STATIC IMPORTED GLOBAL)
+set_target_properties(ZLIB::ZLIB PROPERTIES
+  IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/third_party/zlib/libz.a"
+  INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/third_party/zlib"
+)
+add_dependencies(ZLIB::ZLIB zlibstatic)
+
+# Fully static build is best-effort; TLS/backends may still require system deps.
+# NOTE: curl's CMake runs find_package(OpenSSL) at configure-time, so a pure
+# ExternalProject-built OpenSSL cannot satisfy it without a second configure.
+# For now, prefer installing system OpenSSL dev package.
+add_subdirectory(third_party/curl EXCLUDE_FROM_ALL)
+
+target_link_libraries(cpp_agent_lib PRIVATE libcurl)
+
+add_executable(cpp-agent src/app/main.cpp)
+target_link_libraries(cpp-agent PRIVATE cpp_agent_lib)
+
+if(CPP_AGENT_BUILD_TESTS)
+  enable_testing()
+
+  add_executable(cpp-agent-tests-policy
+    tests/test_policy.cpp
+  )
+  target_link_libraries(cpp-agent-tests-policy PRIVATE cpp_agent_lib)
+  add_test(NAME cpp-agent-tests-policy COMMAND cpp-agent-tests-policy)
+
+  add_executable(cpp-agent-tests-config-path
+    tests/test_config_path.cpp
+  )
+  target_link_libraries(cpp-agent-tests-config-path PRIVATE cpp_agent_lib)
+  add_test(NAME cpp-agent-tests-config-path COMMAND cpp-agent-tests-config-path)
+
+  add_executable(cpp-agent-tests-tool-calls-parsing
+    tests/test_tool_calls_parsing.cpp
+  )
+  target_link_libraries(cpp-agent-tests-tool-calls-parsing PRIVATE cpp_agent_lib)
+  add_test(NAME cpp-agent-tests-tool-calls-parsing COMMAND cpp-agent-tests-tool-calls-parsing)
+
+  add_executable(cpp-agent-tests-agent-tool-loop
+    tests/test_agent_tool_loop.cpp
+  )
+  target_link_libraries(cpp-agent-tests-agent-tool-loop PRIVATE cpp_agent_lib)
+  add_test(NAME cpp-agent-tests-agent-tool-loop COMMAND cpp-agent-tests-agent-tool-loop)
+
+  add_executable(cpp-agent-tests-plan-replan
+    tests/test_plan_replan.cpp
+  )
+  target_link_libraries(cpp-agent-tests-plan-replan PRIVATE cpp_agent_lib)
+  add_test(NAME cpp-agent-tests-plan-replan COMMAND cpp-agent-tests-plan-replan)
+
+  add_executable(cpp-agent-tests-plan-complete-render
+    tests/test_plan_complete_render.cpp
+  )
+  target_link_libraries(cpp-agent-tests-plan-complete-render PRIVATE cpp_agent_lib)
+  add_test(NAME cpp-agent-tests-plan-complete-render COMMAND cpp-agent-tests-plan-complete-render)
+
+  add_executable(cpp-agent-tests-plan-active-migration
+    tests/test_plan_active_migration.cpp
+  )
+  target_link_libraries(cpp-agent-tests-plan-active-migration PRIVATE cpp_agent_lib)
+  add_test(NAME cpp-agent-tests-plan-active-migration COMMAND cpp-agent-tests-plan-active-migration)
+
+endif()

@@ -1,0 +1,30 @@
+# Build outputs
+/build/
+
+# vendored dependencies are managed separately (often as git submodules)
+/third_party/curl/
+/third_party/openssl/
+/third_party/zlib/
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CPackConfig.cmake
+CPackSourceConfig.cmake
+Makefile
+compile_commands.json
+*.cmake
+
+# OS / editor
+.DS_Store
+*.swp
+*.swo
+
+# Logs / tmp
+*.log
+/tmp/
+
+# Local settings (optional)
+# ~/.cpp-agent/settings.json is outside repo; keep repo clean if copied in
+settings.json
