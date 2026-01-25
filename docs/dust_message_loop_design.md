@@ -119,6 +119,8 @@ QuitWhenIdle / Quit 语义（v1）：
 - `Quit()`：可跨线程调用，内部通过 TaskRunner/state 投递到 loop 线程执行 `QuitWhenIdle()`。
   - 若当前未处于 Run：记录 `quit_requested_`，下一次 Run 将在“when idle”条件满足时尽快退出。
 - MessageLoop 会继续执行 **已入队** 的 tasks（MessageQueue 为空后退出 Run）。
+  - 退出条件只取决于 MessageQueue 是否为空；不关心是否仍有 WatchFd 注册或是否存在持续 I/O 事件。
+  - 当 `quit_requested_ && queue.empty()` 时：直接退出，不再执行 DoIdleWork。
 - delayed tasks：
   - 若已经到期并被入队，则会执行。
   - 若未到期且仅存于 delayed 结构中，则不保证会在退出前触发。
