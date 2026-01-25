@@ -14,6 +14,12 @@ add_library(cpp_agent_lib
   src/core/tool_log.cpp
   src/app/config.cpp
   src/infra/http/openai_client.cpp
+  src/infra/http_async/async_client.cc
+  src/infra/llm/llm_context.cpp
+  src/infra/llm/llm_config_loader.cpp
+  src/infra/llm/json_min.cpp
+  src/infra/llm/openai_provider.cpp
+  src/infra/llm/openai_provider_factory.cpp
   src/infra/plan/plan_model.cpp
   src/infra/plan/plan_store.cpp
   src/infra/tools/file_tools.cpp
@@ -108,13 +114,23 @@ add_dependencies(ZLIB::ZLIB zlibstatic)
 # Fully static build is best-effort; TLS/backends may still require system deps.
 add_subdirectory(third_party/curl EXCLUDE_FROM_ALL)
 
-target_link_libraries(cpp_agent_lib PRIVATE libcurl)
+# dust (MessageLoop runtime)
+# Allow building dust's own tests in the top-level build tree.
+set(DUST_BUILD_TESTS ON CACHE BOOL "Build dust tests" FORCE)
+add_subdirectory(third_party/dust EXCLUDE_FROM_ALL)
+
+target_link_libraries(cpp_agent_lib PRIVATE libcurl dust)
 # curl's include directory isn't propagated via libcurl here (it's built as a subdir),
 # so add it explicitly to our library.
 target_include_directories(cpp_agent_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/curl/include)
+# dust headers
+target_include_directories(cpp_agent_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/dust/include)
 
 add_executable(cpp-agent src/app/main.cpp)
 target_link_libraries(cpp-agent PRIVATE cpp_agent_lib)
+
+add_executable(cpp-agent-http-async-baidu-smoke apps/http_async_baidu_smoke.cc)
+target_link_libraries(cpp-agent-http-async-baidu-smoke PRIVATE cpp_agent_lib)
 
 if(CPP_AGENT_BUILD_TESTS)
   enable_testing()
@@ -160,5 +176,23 @@ if(CPP_AGENT_BUILD_TESTS)
   )
   target_link_libraries(cpp-agent-tests-plan-active-migration PRIVATE cpp_agent_lib)
   add_test(NAME cpp-agent-tests-plan-active-migration COMMAND cpp-agent-tests-plan-active-migration)
+
+  add_executable(cpp-agent-tests-http-async-baidu
+    tests/test_http_async_baidu.cpp
+  )
+  target_link_libraries(cpp-agent-tests-http-async-baidu PRIVATE cpp_agent_lib)
+  add_test(NAME cpp-agent-tests-http-async-baidu COMMAND cpp-agent-tests-http-async-baidu)
+
+  add_executable(cpp-agent-tests-llm-context
+    tests/test_llm_context.cpp
+  )
+  target_link_libraries(cpp-agent-tests-llm-context PRIVATE cpp_agent_lib)
+  add_test(NAME cpp-agent-tests-llm-context COMMAND cpp-agent-tests-llm-context)
+
+  add_executable(cpp-agent-tests-llm-config-loader
+    tests/test_llm_config_loader.cpp
+  )
+  target_link_libraries(cpp-agent-tests-llm-config-loader PRIVATE cpp_agent_lib)
+  add_test(NAME cpp-agent-tests-llm-config-loader COMMAND cpp-agent-tests-llm-config-loader)
 
 endif()

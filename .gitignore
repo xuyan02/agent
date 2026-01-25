@@ -5,6 +5,7 @@
 /third_party/curl/
 /third_party/openssl/
 /third_party/zlib/
+/third_party/dust/
 
 # CMake
 CMakeFiles/
