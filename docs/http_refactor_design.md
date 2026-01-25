@@ -123,9 +123,50 @@
 
 ---
 
+## 6. 异步/非阻塞与并发（基于 curl multi，支持 streaming）
+> 约束：HTTP/HTTPS 仍然基于 curl；我们自研的是“并发调度 + 单 loop 驱动 + 主线程投递”。
+
+### 6.1 总体架构
+- 新增：`interfaces::IAsyncHttpClient`
+  - 支持并发 request
+  - 支持 cancel
+  - 支持 streaming（增量数据回调）
+  - **回调必须投递到主线程执行**
+- 实现：`infra/http/CurlMultiAsyncHttpClient`
+  - 单独一个网络线程（NetworkLoop）持有 `CURLM*`
+  - 使用 curl multi wait/poll 驱动非阻塞 IO
+  - 请求完成按“先到先得”投递事件
+
+### 6.2 Streaming 事件模型（建议）
+- `on_headers(meta)`（可选：收到 HTTP status/headers 时触发）
+- `on_data(bytes)`（streaming：每次收到增量 body 触发；按到达顺序投递）
+- `on_complete(final)`（请求正常结束）
+- `on_error(err)`（网络/HTTP 错误/取消等）
+
+分层建议：
+- NetworkLoop 层只产出原始 `bytes`（不理解 SSE）
+- OpenAI 层解析 SSE（data: ...）并产出“delta content / delta tool_calls”
+
+### 6.3 单 NetworkLoop 的设计前置条件
+- 线程模型：
+  - 1 个常驻 NetworkLoop 线程驱动 curl multi
+  - 主线程周期性 drain 事件队列执行回调
+- 数据通道：
+  - 控制队列（主线程 -> loop）：新增请求、取消请求
+  - 事件队列（loop -> 主线程）：headers/data/complete/error
+
+### 6.4 需要提前确认的决策点（影响 loop 设计）
+1) 主线程 drain 机制：主线程如何调用 drain（例如在 CLI 主循环内每轮 drain 一次）
+2) 事件队列上限：主线程处理不过来时的策略（无上限/阻塞/背压）
+3) streaming 交付粒度：交付原始 bytes 还是解析后的 delta（建议 bytes）
+4) cancel 语义：cancel 后已投递事件是否仍执行（建议通过 request_id 忽略）
+
+---
+
 ## 讨论点（逐点确认）
 1) `ILlmClient` 的入参/出参是否要 DTO 化？（A 最小改动 / B 更纯）
 2) `HttpRequest/HttpResponse` 字段是否要包含 response headers / timeout / proxy 等？
-3) 错误模型：IHttpClient 层抛异常还是返回错误码结构？
+3) 错误模型：HTTP client 层抛异常还是通过回调返回错误结构？
 4) 日志与可观测性：请求/响应日志放在哪层（infra 还是 app/policy）？
 5) tools_json 的生成位置：OpenAI client 内部 set、wiring 注入、还是 tool registry 动态生成？
+6) streaming SSE：是否需要支持 tool_calls 的增量分片（OpenAI 常见场景）？
