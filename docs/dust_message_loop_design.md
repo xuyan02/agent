@@ -37,6 +37,7 @@
 ### 1.2 MessageLoop
 - `void PostTask(OnceClosure task);`  // 线程安全
 - `void PostDelayedTask(Duration delay, OnceClosure task);`  // 线程安全（Linux 使用 timerfd 实现；v1 不支持取消）
+  - 语义（v1）：`delay == 0` 也仍然通过 timerfd 路径触发（不等价于 PostTask）。
 
 - `void Run();`  // 仅 loop 线程调用：阻塞运行直到 Quit
 - `bool RunOnce(std::optional<Duration> max_wait);`  // 仅 loop 线程：处理一轮（可阻塞等待）
@@ -113,6 +114,7 @@ Quit 语义（v1）：
 - timers：使用 **timerfd**（`CLOCK_MONOTONIC`）。
   - 设计：内部维护最小堆 timers；timerfd 只负责“最近到期时间点”的唤醒。
   - timerfd readable 时：读出到期计数（清空）后，批量执行所有 `now >= deadline` 的 delayed tasks，并重设 timerfd 到下一到期时间。
+  - `delay == 0`：将任务按“立即到期”插入 delayed 堆，并将 timerfd 立刻重设为最近到期时间点（以触发唤醒）。
 - 使用 epoll 管理：wakeup eventfd + timerfd + watched fds。
 - I/O 事件映射（level-triggered）：
   - Error/Hangup: EPOLLERR/EPOLLHUP -> 触发 `on_error`
@@ -120,6 +122,7 @@ Quit 语义（v1）：
   - Writable: EPOLLOUT -> 触发 `on_writable`
 
 触发顺序（同一 fd 同时就绪时）：`on_error` -> `on_readable` -> `on_writable`。
+- 短路规则（v1）：若本轮对该 fd 执行了 `on_error`，则本轮不再执行 `on_readable/on_writable`。
 
 ### 4.1 核心循环伪代码（Linux）
 1) `RunAllPendingTasks()`（无上限，按需求）
