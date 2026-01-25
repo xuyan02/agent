@@ -70,11 +70,17 @@ re-run 语义（v1）：
 
 ### 1.5 I/O Watch（仅 loop 线程；fd 作为 key）
 
+分工（最终）：
+- MessageLoop 持有 `watches_by_fd` 并负责触发回调。
+- MessagePump 只负责等待与就绪通知（不直接触发 WatchCallbacks）。
+
 API 草案：
+- `enum class IoEvent { kReadable, kWritable, kError, kHangup };`
+- `using IoEvents = uint32_t;`  // bitmask
 - `struct WatchCallbacks {`
   - `base::RepeatingClosure on_readable;`  // 可为空：为空表示不监听该事件
   - `base::RepeatingClosure on_writable;`  // 可为空
-  - `base::RepeatingClosure on_error;`  // 可为空；EPOLLERR/EPOLLHUP 统一走这里（v1）
+  - `base::RepeatingClosure on_error;`  // 可为空；kError/kHangup 统一走这里（v1）
   - `};`
 - `void WatchFd(int fd, WatchCallbacks callbacks);`  // 全量覆盖：替换该 fd 的回调集合/监听掩码
 - `void UnwatchFd(int fd);`
@@ -84,7 +90,7 @@ API 草案：
 - 不允许三个回调均为空：`WatchFd(fd, empty)` 等价于 `UnwatchFd(fd)`。
 - 不自动处理 close：调用方必须在 close(fd) 之前 **在 loop 线程** 调用 `UnwatchFd(fd)`；回调内禁止直接 `close(fd)`。
 - MessageLoop/MessagePump 不负责 close 被 watch 的 fd（fd 生命周期由调用方管理）。
-- epoll 策略：level-triggered（默认 EPOLLIN/EPOLLOUT，不启用 EPOLLET）。
+- Linux epoll 策略：level-triggered（默认 EPOLLIN/EPOLLOUT，不启用 EPOLLET）。
 
 ---
 
@@ -121,6 +127,7 @@ QuitWhenIdle 语义（v1）：
     - `virtual bool DoWork() = 0;`  // 执行 pending tasks；返回是否还有更多 work
     - `virtual bool DoDelayedWork(TimeTicks* next_delayed_work_time) = 0;`
     - `virtual bool DoIdleWork() = 0;`
+    - `virtual void OnFdEvents(int fd, IoEvents events) = 0;`  // I/O 就绪通知（跨平台抽象）
     - `};`
   - `virtual void Run(Delegate* delegate) = 0;`
   - `virtual void Quit() = 0;`
@@ -149,44 +156,39 @@ QuitWhenIdle 语义（v1）：
 
 ---
 
-## 4. Linux 后端（epoll + eventfd + timerfd）
+## 5. Linux MessagePump 实现（epoll + eventfd + timerfd）
 
-> 约束：Linux 实现优先采用 Chromium 风格代码与命名（CamelCase 类型、snake_case 方法/变量、DISALLOW_COPY_AND_ASSIGN 等习惯以项目约定为准）。
+> 约束：Linux 实现优先采用 Chromium 风格代码与命名。
 
-- wakeup：使用 **eventfd**。
-- timers：使用 **timerfd**（`CLOCK_MONOTONIC`）。
-  - 设计：内部维护最小堆 timers；timerfd 只负责“最近到期时间点”的唤醒。
-  - timerfd readable 时：读出到期计数（清空）后，批量执行所有 `now >= deadline` 的 delayed tasks，并重设 timerfd 到下一到期时间。
-  - `delay == 0`：将任务按“立即到期”插入 delayed 堆，并将 timerfd 立刻重设为最近到期时间点（以触发唤醒）。
-- 使用 epoll 管理：wakeup eventfd + timerfd + watched fds。
-- I/O 事件映射（level-triggered）：
-  - Error/Hangup: EPOLLERR/EPOLLHUP -> 触发 `on_error`
-  - Readable: EPOLLIN -> 触发 `on_readable`
-  - Writable: EPOLLOUT -> 触发 `on_writable`
+职责边界：
+- MessagePump 只做等待/唤醒与 I/O 就绪通知：
+  - 将 epoll 事件映射为跨平台 `IoEvents`，并调用 `delegate->OnFdEvents(fd, events)`。
+- WatchCallbacks 的触发由 MessageLoop 完成（按文档规则 error->read->write，on_error 短路）。
 
-触发顺序（同一 fd 同时就绪时）：`on_error` -> `on_readable` -> `on_writable`。
-- 短路规则（v1）：若本轮对该 fd 执行了 `on_error`，则本轮不再执行 `on_readable/on_writable`。
+LinuxPump 机制：
+- wakeup：**eventfd**（由 `ScheduleWork()` 写入，Run 中读出清空）。
+- timer：**timerfd(CLOCK_MONOTONIC)**（由 `ScheduleDelayedWork(next_time)` 设置；Run 中读出清空并触发 `delegate->DoDelayedWork(...)`）。
+- I/O：epoll 监听注册的 fds。
 
-### 4.1 核心循环伪代码（Linux）
-> 关键语义：每次被唤醒后，先 drain 掉所有 pending tasks（无上限）再进入下一次 wait。
+I/O 事件映射（level-triggered）：
+- EPOLLIN  -> IoEvent::kReadable
+- EPOLLOUT -> IoEvent::kWritable
+- EPOLLERR -> IoEvent::kError
+- EPOLLHUP -> IoEvent::kHangup
 
-1) `DrainAllPendingTasks()`（无上限，直到队列为空）
-2) `RunDueDelayedTasks()`（批量执行到期项，重设 timerfd）
-3) `epoll_wait(epoll_fd, events, -1)`
-4) 逐个处理 events：
-   - 若 eventfd：`ReadAndClearEventFd()`，回到步骤 (1)
-   - 若 timerfd：`ReadAndClearTimerFd()`，回到步骤 (2)
-   - 否则：
-     - 读取该 fd 当前 WatchCallbacks（注意：允许回调中立即 WatchFd/UnwatchFd 生效）
-     - 若 EPOLLERR/EPOLLHUP 且 on_error 非空：执行 on_error（并短路本轮 read/write）
-     - 否则若 EPOLLIN 且 on_readable 非空：执行 on_readable
-     - 若 EPOLLOUT 且 on_writable 非空：执行 on_writable
-
-回调重入/更新语义（v1）：
-- 允许在回调内对 **同一 fd** 调用 `WatchFd/UnwatchFd`，并且要求“立即生效”。
-- 建议实现方式：每次准备触发某个回调前，都从 `watches_by_fd[fd]` 重新读取最新配置；若已 Unwatch/为空则跳过后续触发。
-
-> 注意：由于 drain tasks 无上限，若持续有大量 post，I/O 回调可能被延后执行；这是 v1 的明确语义（后续可引入公平性策略）。
+### 5.1 Pump::Run 伪代码（Linux）
+1) loop:
+   - `bool did_work = delegate->DoWork();`
+   - `TimeTicks next_time; bool did_delayed = delegate->DoDelayedWork(&next_time);`
+   - `if (quit_) break;`
+   - `if (!did_work && !did_delayed) delegate->DoIdleWork();`
+   - 计算 wait timeout：
+     - v1：timerfd 由 ScheduleDelayedWork 负责，epoll_wait 直接用 -1
+   - `epoll_wait(...)`
+   - 处理 epoll events：
+     - eventfd: ReadAndClear; continue
+     - timerfd: ReadAndClear; delegate->DoDelayedWork(&next_time); continue
+     - watched fd: `IoEvents events = MapEpollToIoEvents(...); delegate->OnFdEvents(fd, events);`
 
 ---
 
