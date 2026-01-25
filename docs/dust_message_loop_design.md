@@ -44,15 +44,25 @@
 
 > 线程约束：`Run/RunOnce/Watch*` 只能在 loop 线程调用；跨线程注册 watch 需要 `PostTask([&]{ Watch... })`。
 
-### 1.3 I/O Watch（仅 loop 线程调用）
-- Read/Write 分离回调（语义化，避免 mask 分发给上层）：
-  - `WatchId WatchReadable(int fd, OnceClosure on_readable);`
-  - `WatchId WatchWritable(int fd, OnceClosure on_writable);`
-  - `void Unwatch(WatchId);`
+### 1.3 I/O Watch（仅 loop 线程调用；fd 作为 key）
 
-v1 事件覆盖：Readable/Writable 必须支持；Error/Hangup 可通过 readable/writable 回调后的 `getsockopt`/read 失败体现，或后续扩展专门回调。
+目标：不暴露 WatchId，允许同一 fd 反复注册多组回调；Unwatch 以 fd 为 key 清理全部。
 
-> 注意：v1 约束 Watch/Unwatch 只允许在 loop 线程调用；跨线程注册需要调用方通过 `PostTask()` 把注册动作投递到 loop。
+API 草案：
+- `struct WatchCallbacks {`
+  - `base::RepeatingClosure on_readable;`
+  - `base::RepeatingClosure on_writable;`
+  - `base::RepeatingClosure on_error;`  // EPOLLERR/EPOLLHUP 统一走这里（v1）
+  - `};`
+- `void WatchFd(int fd, WatchCallbacks callbacks);`  // 允许重复调用：追加到 fd 的回调列表
+- `void UnwatchFd(int fd);`  // 移除该 fd 的全部回调并从 epoll 删除
+
+语义约束（v1）：
+- 回调为 Repeating：每次就绪都会触发对应回调。
+- 不自动处理 close：调用方必须在 close(fd) 之前 `UnwatchFd(fd)`。
+- epoll 策略：使用 level-triggered（默认 EPOLLIN/EPOLLOUT，不启用 EPOLLET）。
+
+> 注意：v1 约束 WatchFd/UnwatchFd 只允许在 loop 线程调用；跨线程注册需要调用方通过 `PostTask()` 把注册动作投递到 loop。
 
 ---
 
@@ -88,7 +98,7 @@ Quit 语义（v1）：
 ### 3.2 队列
 - `pending_tasks`：MPSC 队列（多生产者，loop 单消费）
 - `timers`：最小堆（到期时间 + TimerId + Task）
-- `watches`：WatchId -> (IoHandle, mask, callback)
+- `watches_by_fd`：fd -> callbacks 列表（每个 fd 可注册多组 WatchCallbacks）
 
 ---
 
@@ -101,10 +111,10 @@ Quit 语义（v1）：
   - 设计：内部维护最小堆 timers；timerfd 只负责“最近到期时间点”的唤醒。
   - timerfd readable 时：读出到期计数（清空）后，批量执行所有 `now >= deadline` 的 delayed tasks，并重设 timerfd 到下一到期时间。
 - 使用 epoll 管理：wakeup eventfd + timerfd + watched fds。
-- I/O 事件映射：
-  - Readable: EPOLLIN
-  - Writable: EPOLLOUT
-  - Hangup/Error: EPOLLHUP/EPOLLERR
+- I/O 事件映射（level-triggered）：
+  - Readable: EPOLLIN -> 触发所有 `on_readable`
+  - Writable: EPOLLOUT -> 触发所有 `on_writable`
+  - Error/Hangup: EPOLLERR/EPOLLHUP -> 触发所有 `on_error`
 
 ### 4.1 核心循环伪代码（Linux）
 1) `RunAllPendingTasks()`（无上限，按需求）
