@@ -53,6 +53,10 @@
 
 说明：
 - TaskRunner 可 copy，可跨线程长期持有。
+- 并发顺序语义（v1）：
+  - 不保证“跨线程全局严格 FIFO”。
+  - 保证单线程内按调用顺序入队。
+  - delayed tasks 的“同一 deadline 稳定顺序”也仅在单线程内保证；跨线程并发时以最终入队顺序为准。
 - 当 MessageLoop 进入 shutdown 后，Post* 返回 false 丢弃任务。
 
 ### 1.4 MessageLoop（仅 loop 线程控制）
