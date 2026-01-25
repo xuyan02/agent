@@ -74,7 +74,8 @@ API 草案：
 
 ### 2.1 线程模型
 - loop 绑定到一个线程（通常主线程），负责执行：tasks/timers/io callbacks。
-- 任意线程可调用 `post/post_delayed/stop`。
+- 允许任意线程调用 `PostTask/PostDelayedTask/Quit`，包括在 loop 线程内重入调用。
+  - 语义（v1）：`PostTask/PostDelayedTask` **从不 inline 直接执行**，总是先入队（避免递归/重入带来的不可预测性）。
 
 ### 2.2 执行顺序与公平性
 每轮循环建议：
@@ -125,16 +126,18 @@ Quit 语义（v1）：
 - 短路规则（v1）：若本轮对该 fd 执行了 `on_error`，则本轮不再执行 `on_readable/on_writable`。
 
 ### 4.1 核心循环伪代码（Linux）
-1) `RunAllPendingTasks()`（无上限，按需求）
+> 关键语义：每次被唤醒后，先 drain 掉所有 pending tasks（无上限）再进入下一次 wait。
+
+1) `DrainAllPendingTasks()`（无上限，直到队列为空）
 2) `RunDueDelayedTasks()`（批量执行到期项，重设 timerfd）
 3) `epoll_wait(epoll_fd, events, -1)`
 4) 逐个处理 events：
-   - 若 eventfd：`ReadAndClearEventFd()`，继续下一轮（因为可能有新任务/定时器）
-   - 若 timerfd：`ReadAndClearTimerFd()`，执行 `RunDueDelayedTasks()`，继续下一轮
+   - 若 eventfd：`ReadAndClearEventFd()`，回到步骤 (1)
+   - 若 timerfd：`ReadAndClearTimerFd()`，回到步骤 (2)
    - 否则：
      - 读取该 fd 当前 WatchCallbacks（注意：允许回调中立即 WatchFd/UnwatchFd 生效）
-     - 若 EPOLLERR/EPOLLHUP 且 on_error 非空：执行 on_error
-     - 若 EPOLLIN 且 on_readable 非空：执行 on_readable
+     - 若 EPOLLERR/EPOLLHUP 且 on_error 非空：执行 on_error（并短路本轮 read/write）
+     - 否则若 EPOLLIN 且 on_readable 非空：执行 on_readable
      - 若 EPOLLOUT 且 on_writable 非空：执行 on_writable
 
 回调重入/更新语义（v1）：
