@@ -36,12 +36,11 @@
 
 ### 1.2 MessageLoop
 - `void PostTask(OnceClosure task);`  // 线程安全
-- `TimerId PostDelayedTask(Duration delay, OnceClosure task);`  // 线程安全（Linux 使用 timerfd 实现）
-- `void CancelTimer(TimerId);`  // 可选
+- `void PostDelayedTask(Duration delay, OnceClosure task);`  // 线程安全（Linux 使用 timerfd 实现；v1 不支持取消）
 
 - `void Run();`  // 仅 loop 线程调用：阻塞运行直到 Quit
 - `bool RunOnce(std::optional<Duration> max_wait);`  // 仅 loop 线程：处理一轮（可阻塞等待）
-- `void Quit();`  // 线程安全：请求退出并唤醒 Run
+- `void Quit();`  // 线程安全：请求退出并唤醒 Run（优雅退出：会继续执行已入队的 tasks）
 
 > 线程约束：`Run/RunOnce/Watch*` 只能在 loop 线程调用；跨线程注册 watch 需要 `PostTask([&]{ Watch... })`。
 
@@ -66,9 +65,15 @@ v1 事件覆盖：Readable/Writable 必须支持；Error/Hangup 可通过 readab
 ### 2.2 执行顺序与公平性
 每轮循环建议：
 1) drain tasks（v1：不设上限，按需求执行全部；注意可能饿死 I/O）
-2) 执行到期 timers（v1：post_delayed 先提供 API，暂不实现或仅做最小实现）
-3) wait（I/O 或 wakeup 或 timer 超时）
+2) 执行到期 delayed tasks（PostDelayedTask；Linux：timerfd 唤醒后批量执行）
+3) wait（I/O 或 wakeup 或 timerfd）
 4) 执行就绪 I/O callbacks
+
+Quit 语义（v1）：
+- Quit 被请求后，MessageLoop 会继续执行 **已入队** 的 tasks，然后退出 Run。
+- delayed tasks：
+  - 若已经到期并被入队，则会执行。
+  - 若未到期且仅存于 delayed 结构中，则不保证会在退出前触发。
 
 ---
 
