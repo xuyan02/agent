@@ -27,33 +27,33 @@
 
 ---
 
-## 1. 核心 API 草案
+## 1. 核心 API 草案（Chromium 风格）
 
 ### 1.1 基本类型
-- `using Task = std::function<void()>;`
+- Task 类型：建议使用 **OnceClosure** 语义（一次性执行）。
+  - 伪代码：`using OnceClosure = base::OnceClosure;`（dust 内部若不依赖 base，则提供等价物）
 - `using Duration = std::chrono::milliseconds;`
 
 ### 1.2 MessageLoop
-- `void post(Task);`  // 线程安全
-- `TimerId post_delayed(Duration, Task);`  // 线程安全（v1 先提供 API；不实现或仅做最小实现）
-- `void cancel_timer(TimerId);`  // 线程安全（可选）
-- `void run();`  // 仅 loop 线程调用，阻塞直到 stop
-- `bool run_once(std::optional<Duration> max_wait);`  // 仅 loop 线程
-- `void stop();`  // 线程安全，唤醒 run
+- `void PostTask(OnceClosure task);`  // 线程安全
+- `TimerId PostDelayedTask(Duration delay, OnceClosure task);`  // 线程安全（Linux 使用 timerfd 实现）
+- `void CancelTimer(TimerId);`  // 可选
+
+- `void Run();`  // 仅 loop 线程调用：阻塞运行直到 Quit
+- `bool RunOnce(std::optional<Duration> max_wait);`  // 仅 loop 线程：处理一轮（可阻塞等待）
+- `void Quit();`  // 线程安全：请求退出并唤醒 Run
+
+> 线程约束：`Run/RunOnce/Watch*` 只能在 loop 线程调用；跨线程注册 watch 需要 `PostTask([&]{ Watch... })`。
 
 ### 1.3 I/O Watch（仅 loop 线程调用）
-- `enum class IoEvent { Readable, Writable, Error, Hangup };`  // v1 需要支持 Readable/Writable
-- `using IoEventMask = uint32_t;`
-- `WatchId watch_io(IoHandle, IoEventMask, IoCallback);`
-- `void unwatch_io(WatchId);`
+- Read/Write 分离回调（语义化，避免 mask 分发给上层）：
+  - `WatchId WatchReadable(int fd, OnceClosure on_readable);`
+  - `WatchId WatchWritable(int fd, OnceClosure on_writable);`
+  - `void Unwatch(WatchId);`
 
-`IoHandle` 为跨平台变体：
-- Linux/macOS：`int fd`
-- Windows：`SOCKET`（或 HANDLE，v1 以 socket 为重点）
+v1 事件覆盖：Readable/Writable 必须支持；Error/Hangup 可通过 readable/writable 回调后的 `getsockopt`/read 失败体现，或后续扩展专门回调。
 
-`IoCallback`：`void(IoEventMask ready)`
-
-> 注意：v1 约束 watch/unwatch 只允许在 loop 线程调用；跨线程注册需要调用方通过 `post()` 把注册动作投递到 loop。
+> 注意：v1 约束 Watch/Unwatch 只允许在 loop 线程调用；跨线程注册需要调用方通过 `PostTask()` 把注册动作投递到 loop。
 
 ---
 
