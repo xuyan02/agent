@@ -36,6 +36,8 @@
   - Linux 实现：epoll + eventfd + timerfd。
   - Android：不实现，但保留抽象入口（2A）。
 - **MessageQueue**：任务/延迟任务的存储与出队策略（线程安全）。
+  - pending tasks：FIFO。
+  - delayed tasks：按到期时间排序；同一到期时间按注册顺序稳定排序；到期后以该顺序进入 FIFO。
 - **TaskRunner**：线程安全的投递入口（跨线程持有），内部通过 refcounted state + shutdown gate 避免 UAF。
 
 ### 1.2 基本类型
