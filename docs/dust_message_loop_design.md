@@ -59,10 +59,10 @@ API 草案：
 
 语义约束（v1）：
 - 回调为 Repeating：每次就绪都会触发对应回调。
-- 回调为空表示“不监听”，因此 epoll mask 由 callbacks 是否为空决定（Readable/Writable/Error）。
-  - 当三个回调均为空时：保留 watches_by_fd 记录，但将该 fd 从 epoll 中 DEL（不再监听任何事件）。
-  - 当后续更新为非空回调时：根据 fd 当前是否已在 epoll 中，执行 ADD 或 MOD。
-- 不自动处理 close：调用方必须在 close(fd) 之前 `UnwatchFd(fd)`。
+- epoll mask 由 callbacks 是否为空决定（Readable/Writable/Error）。
+  - 不允许三个回调均为空：`WatchFd(fd, empty)` 视为无意义配置，等价于 `UnwatchFd(fd)`。
+- 不自动处理 close：调用方必须在 close(fd) 之前 **在 loop 线程** 调用 `UnwatchFd(fd)`。
+  - 强约束（v1）：回调内禁止直接 `close(fd)`；必须先 `UnwatchFd(fd)`，再由调用方关闭 fd。
 - epoll 策略：使用 level-triggered（默认 EPOLLIN/EPOLLOUT，不启用 EPOLLET）。
 
 > 注意：v1 约束 WatchFd/UnwatchFd 只允许在 loop 线程调用；跨线程注册需要调用方通过 `PostTask()` 把注册动作投递到 loop。
