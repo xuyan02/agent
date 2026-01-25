@@ -49,7 +49,6 @@
 - `bool PostTask(OnceClosure task);`
 - `bool PostDelayedTask(Duration delay, OnceClosure task);`  // v1 不支持取消
   - 语义（v1）：`delay == 0` 也走延迟路径（最终由 timerfd 驱动），不等价于 PostTask。
-- `bool Quit();`
 
 说明：
 - TaskRunner 可 copy，可跨线程长期持有。
@@ -62,7 +61,8 @@
 ### 1.4 MessageLoop（仅 loop 线程控制）
 - `void Run();`  // 可重复调用（re-run）
 - `bool RunOnce(std::optional<Duration> max_wait);`
-- `void QuitWhenIdle();`  // 优雅退出：处理完已入队任务后退出当前 Run
+- `void QuitWhenIdle();`  // 仅 loop 线程：优雅退出当前 Run
+- `void RequestQuitWhenIdle();`  // 线程安全：请求在 loop 线程执行 QuitWhenIdle（便捷跨线程退出入口）
 - `scoped_refptr<TaskRunner> task_runner();`
 - `void WatchFd(int fd, WatchCallbacks callbacks);`
 - `void UnwatchFd(int fd);`
@@ -114,8 +114,9 @@ API 草案：
 3) wait（I/O 或 wakeup 或 timerfd）
 4) 执行就绪 I/O callbacks
 
-QuitWhenIdle 语义（v1）：
-- `TaskRunner::Quit()` 触发 `MessageLoop::QuitWhenIdle()`：设置退出标志并唤醒 MessagePump。
+QuitWhenIdle / RequestQuitWhenIdle 语义（v1）：
+- `QuitWhenIdle()`：仅 loop 线程调用，设置退出标志并唤醒 MessagePump。
+- `RequestQuitWhenIdle()`：可跨线程调用，内部通过 TaskRunner/state 投递到 loop 线程执行 `QuitWhenIdle()`（避免调用方手写 PostTask）。
 - MessageLoop 会继续执行 **已入队** 的 tasks（MessageQueue 为空后退出 Run）。
 - delayed tasks：
   - 若已经到期并被入队，则会执行。
