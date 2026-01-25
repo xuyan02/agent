@@ -1,4 +1,4 @@
-# dust::MessageLoop 设计文档（讨论稿 v1）
+# dust MessageLoop / MessagePump / MessageQueue 设计文档（讨论稿 v1）
 
 > 背景：MessageLoop 将放入独立 repo **dust**，作为与业务无关的基础库模块。cpp-agent 侧的 curl-multi NetworkLoop 将依赖 MessageLoop 做主线程投递与（可选）I/O 注册。
 
@@ -27,27 +27,42 @@
 
 ---
 
-## 1. 核心 API 草案（Chromium 风格）
+## 1. 核心对象与职责（Chromium 风格拆分）
 
-### 1.1 基本类型
+### 1.1 关键对象
+- **MessageLoop**：面向使用者的“线程绑定 loop”，负责：创建/拥有 MessagePump、管理 MessageQueue、提供 Current()。
+- **MessagePump**：抽象不同平台的“阻塞等待与驱动逻辑”。
+  - Linux 实现：epoll + eventfd + timerfd。
+  - Android：不实现，但保留抽象入口（2A）。
+- **MessageQueue**：任务/延迟任务的存储与出队策略（线程安全）。
+- **TaskRunner**：线程安全的投递入口（跨线程持有），内部通过 refcounted state + shutdown gate 避免 UAF。
+
+### 1.2 基本类型
 - Task 类型：建议使用 **OnceClosure** 语义（一次性执行）。
   - 伪代码：`using OnceClosure = base::OnceClosure;`（dust 内部若不依赖 base，则提供等价物）
-- `using Duration = std::chrono::milliseconds;`
+- Watch 回调：使用可为空的 `base::RepeatingClosure`。
 
-### 1.2 MessageLoop
-- `void PostTask(OnceClosure task);`  // 线程安全
-- `void PostDelayedTask(Duration delay, OnceClosure task);`  // 线程安全（Linux 使用 timerfd 实现；v1 不支持取消）
-  - 语义（v1）：`delay == 0` 也仍然通过 timerfd 路径触发（不等价于 PostTask）。
+### 1.3 TaskRunner（跨线程投递）
+- `bool PostTask(OnceClosure task);`
+- `bool PostDelayedTask(Duration delay, OnceClosure task);`  // v1 不支持取消
+  - 语义（v1）：`delay == 0` 也走延迟路径（最终由 timerfd 驱动），不等价于 PostTask。
+- `bool Quit();`
 
-- `void Run();`  // 仅 loop 线程调用：阻塞运行直到 Quit
-- `bool RunOnce(std::optional<Duration> max_wait);`  // 仅 loop 线程：处理一轮（可阻塞等待）
-- `void Quit();`  // 线程安全：请求退出并唤醒 Run（优雅退出：会继续执行已入队的 tasks）
+说明：
+- TaskRunner 可 copy，可跨线程长期持有。
+- 当 MessageLoop 进入 shutdown 后，Post* 返回 false 丢弃任务。
 
-> 线程约束：`Run/RunOnce/Watch*` 只能在 loop 线程调用；跨线程注册 watch 需要 `PostTask([&]{ Watch... })`。
+### 1.4 MessageLoop（仅 loop 线程控制）
+- `void Run();`
+- `bool RunOnce(std::optional<Duration> max_wait);`
+- `void QuitWhenIdle();`  // 优雅退出：处理完已入队任务后退出 Run
+- `scoped_refptr<TaskRunner> task_runner();`
 
-### 1.3 I/O Watch（仅 loop 线程调用；fd 作为 key）
+线程约束：
+- Run/RunOnce/WatchFd/UnwatchFd 只能在 loop 线程调用。
+- 跨线程仅通过 TaskRunner 投递任务。
 
-目标：不暴露 WatchId，以 fd 为 key 管理监听配置；允许重复 WatchFd 以“更新配置”。
+### 1.5 I/O Watch（仅 loop 线程；fd 作为 key）
 
 API 草案：
 - `struct WatchCallbacks {`
@@ -56,17 +71,13 @@ API 草案：
   - `base::RepeatingClosure on_error;`  // 可为空；EPOLLERR/EPOLLHUP 统一走这里（v1）
   - `};`
 - `void WatchFd(int fd, WatchCallbacks callbacks);`  // 全量覆盖：替换该 fd 的回调集合/监听掩码
-- `void UnwatchFd(int fd);`  // 移除该 fd 的配置并从 epoll 删除
+- `void UnwatchFd(int fd);`
 
 语义约束（v1）：
 - 回调为 Repeating：每次就绪都会触发对应回调。
-- epoll mask 由 callbacks 是否为空决定（Readable/Writable/Error）。
-  - 不允许三个回调均为空：`WatchFd(fd, empty)` 视为无意义配置，等价于 `UnwatchFd(fd)`。
-- 不自动处理 close：调用方必须在 close(fd) 之前 **在 loop 线程** 调用 `UnwatchFd(fd)`。
-  - 强约束（v1）：回调内禁止直接 `close(fd)`；必须先 `UnwatchFd(fd)`，再由调用方关闭 fd。
-- epoll 策略：使用 level-triggered（默认 EPOLLIN/EPOLLOUT，不启用 EPOLLET）。
-
-> 注意：v1 约束 WatchFd/UnwatchFd 只允许在 loop 线程调用；跨线程注册需要调用方通过 `PostTask()` 把注册动作投递到 loop。
+- 不允许三个回调均为空：`WatchFd(fd, empty)` 等价于 `UnwatchFd(fd)`。
+- 不自动处理 close：调用方必须在 close(fd) 之前 **在 loop 线程** 调用 `UnwatchFd(fd)`；回调内禁止直接 `close(fd)`。
+- epoll 策略：level-triggered（默认 EPOLLIN/EPOLLOUT，不启用 EPOLLET）。
 
 ---
 
@@ -74,8 +85,8 @@ API 草案：
 
 ### 2.1 线程模型
 - loop 绑定到一个线程（通常主线程），负责执行：tasks/timers/io callbacks。
-- 允许任意线程调用 `PostTask/PostDelayedTask/Quit`，包括在 loop 线程内重入调用。
-  - 语义（v1）：`PostTask/PostDelayedTask` **从不 inline 直接执行**，总是先入队（避免递归/重入带来的不可预测性）。
+- 允许任意线程通过 **TaskRunner** 调用 `PostTask/PostDelayedTask/Quit`，包括在 loop 线程内重入调用。
+  - 语义（v1）：Post* **从不 inline 直接执行**，总是先入队到 MessageQueue（避免递归/重入带来的不可预测性）。
 
 ### 2.2 执行顺序与公平性
 每轮循环建议：
@@ -84,8 +95,9 @@ API 草案：
 3) wait（I/O 或 wakeup 或 timerfd）
 4) 执行就绪 I/O callbacks
 
-Quit 语义（v1）：
-- Quit 被请求后，MessageLoop 会继续执行 **已入队** 的 tasks，然后退出 Run。
+QuitWhenIdle 语义（v1）：
+- `TaskRunner::Quit()` 触发 `MessageLoop::QuitWhenIdle()`：设置退出标志并唤醒 MessagePump。
+- MessageLoop 会继续执行 **已入队** 的 tasks（MessageQueue 为空后退出 Run）。
 - delayed tasks：
   - 若已经到期并被入队，则会执行。
   - 若未到期且仅存于 delayed 结构中，则不保证会在退出前触发。
