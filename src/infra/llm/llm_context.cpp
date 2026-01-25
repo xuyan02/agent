@@ -1,6 +1,18 @@
 #include "infra/llm/llm_context.h"
 
+#include <cstdlib>
+#include <iostream>
+#include <string.h>
+
 namespace cpp_agent::infra::llm {
+namespace {
+
+bool DebugLlm() {
+  const char* v = std::getenv("CPP_AGENT_DEBUG_LLM");
+  return v && *v && strcmp(v, "0") != 0;
+}
+
+} // namespace
 
 void LlmContext::Register(std::unique_ptr<LlmProvider> provider) {
   if (!provider) return;
@@ -21,11 +33,26 @@ const LlmProviderFactory* LlmContext::FindProviderFactory(const std::string& pro
 }
 
 std::unique_ptr<LlmRequest> LlmContext::Create(std::string model_name,
-                                              std::string prompt) {
+                                              std::string prompt,
+                                              LlmRequest::OnToken on_token,
+                                              LlmRequest::OnDone on_done) {
+  if (DebugLlm()) {
+    std::cerr << "[cpp-agent.llm] Create model=" << model_name << " providers=" << providers_.size()
+              << std::endl;
+  }
+
   for (auto& provider : providers_) {
     if (!provider) continue;
     if (!provider->SupportsModel(model_name)) continue;
-    return provider->Create(std::move(model_name), std::move(prompt));
+    if (DebugLlm()) {
+      std::cerr << "[cpp-agent.llm] selected provider name=" << provider->name() << std::endl;
+    }
+    return provider->Create(std::move(model_name), std::move(prompt), std::move(on_token),
+                            std::move(on_done));
+  }
+
+  if (DebugLlm()) {
+    std::cerr << "[cpp-agent.llm] no provider supports model=" << model_name << std::endl;
   }
   return nullptr;
 }

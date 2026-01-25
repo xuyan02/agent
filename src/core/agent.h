@@ -2,9 +2,12 @@
 
 #include "core/conversation.h"
 #include "core/policy.h"
+#include "infra/llm/llm_context.h"
 #include "infra/plan/plan_store.h"
-#include "interfaces/illm_client.h"
+#include "dust/message_loop/message_loop.h"
+
 #include "interfaces/iconsole.h"
+#include "interfaces/illm_client.h"
 #include "interfaces/istorage.h"
 #include "interfaces/itool.h"
 
@@ -15,7 +18,7 @@ namespace cpp_agent::core {
 
 class Agent final {
 public:
-  Agent(interfaces::ILlmClient& llm,
+  Agent(cpp_agent::infra::llm::LlmContext& llm,
         interfaces::IConsole& console,
         interfaces::IStorage& storage,
         Policy policy,
@@ -24,12 +27,13 @@ public:
         cpp_agent::infra::plan::PlanStore& plan_store,
         std::string plan_prompt_md);
 
-  void repl();
+  void Repl(dust::MessageLoop& loop);
 
 private:
   void handle_user_input(const std::string& input);
 
-  interfaces::ILlmClient& llm_;
+  cpp_agent::infra::llm::LlmContext& llm_;
+  std::unique_ptr<cpp_agent::infra::llm::LlmRequest> active_req_;
   interfaces::IConsole& console_;
   interfaces::IStorage& storage_;
   Policy policy_;

@@ -21,8 +21,14 @@ bool RegisterProvidersFromConfig(LlmContext& ctx, const std::filesystem::path& p
   if (!json_min::split_top_level_objects(providers_arr, &provider_objs)) return false;
 
   for (const auto& obj : provider_objs) {
+    std::string provider_type;
+    if (!json_min::extract_string_field(obj, "type", &provider_type)) return false;
+
     std::string provider_name;
-    if (!json_min::extract_string_field(obj, "name", &provider_name)) return false;
+    if (!json_min::extract_string_field(obj, "name", &provider_name)) {
+      // Back-compat: allow omitting "name" and use type as name.
+      provider_name = provider_type;
+    }
 
     std::string models_raw;
     if (!json_min::extract_raw_field(obj, "models", &models_raw)) return false;
@@ -31,9 +37,12 @@ bool RegisterProvidersFromConfig(LlmContext& ctx, const std::filesystem::path& p
     if (!json_min::parse_string_array(models_raw, &models)) return false;
 
     std::string params_json;
-    if (!json_min::extract_raw_field(obj, "params", &params_json)) return false;
+    if (!json_min::extract_raw_field(obj, "params", &params_json)) {
+      // Back-compat: allow provider object to directly act as params.
+      params_json = obj;
+    }
 
-    const auto* factory = ctx.FindProviderFactory(provider_name);
+    const auto* factory = ctx.FindProviderFactory(provider_type);
     if (!factory) return false;
 
     auto provider = factory->CreateFromConfig(provider_name, std::move(models), std::move(params_json));

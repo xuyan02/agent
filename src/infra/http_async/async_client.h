@@ -35,6 +35,11 @@ struct Request {
 
   // Maximum redirects to follow.
   int max_redirects = 5;
+
+  // Streaming body callback. If set, it's invoked incrementally as data arrives.
+  // Returning false aborts the transfer.
+  using OnBodyChunk = dust::Function<bool(const char* data, size_t size)>;
+  OnBodyChunk on_body_chunk;
 };
 
 struct Response {

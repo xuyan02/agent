@@ -23,8 +23,7 @@ int main() {
   // Minimal config required by load_config_or_throw().
   write_text(cfg_path,
              "{\n"
-             "  \"base_url\": \"http://127.0.0.1:8000/v1\",\n"
-             "  \"api_key\": \"test\",\n"
+             "  \"providers_json_path\": \"/tmp/cpp-agent-llm.json\",\n"
              "  \"model\": \"test-model\",\n"
              "  \"project_root\": \".\",\n"
              "  \"storage_dir\": \".\"\n"
@@ -34,9 +33,8 @@ int main() {
   fs::current_path(tmp);
 
   auto cfg = cpp_agent::app::load_config_or_throw(cfg_path);
-  assert(cfg.openai.base_url == "http://127.0.0.1:8000/v1");
-  assert(cfg.openai.api_key == "test");
-  assert(cfg.openai.model == "test-model");
+  assert(cfg.llm.providers_json_path == "/tmp/cpp-agent-llm.json");
+  assert(cfg.llm.model == "test-model");
 
   // Verify "~" expansion for config path.
   const char* home = std::getenv("HOME");
@@ -48,15 +46,14 @@ int main() {
     const fs::path home_cfg = home_tmp / "settings.json";
     write_text(home_cfg,
                "{\n"
-               "  \"base_url\": \"http://127.0.0.1:8000/v1\",\n"
-               "  \"api_key\": \"test\",\n"
+               "  \"providers_json_path\": \"~/llm.json\",\n"
                "  \"model\": \"test-model\",\n"
                "  \"project_root\": \"~/proj\",\n"
                "  \"storage_dir\": \"~/store\"\n"
                "}\n");
 
     auto cfg2 = cpp_agent::app::load_config_or_throw("~/cpp-agent-test-config-path/settings.json");
-    assert(cfg2.openai.base_url == "http://127.0.0.1:8000/v1");
+    assert(cfg2.llm.providers_json_path == fs::path(home) / "llm.json");
     assert(cfg2.project_root == fs::path(home) / "proj");
     assert(cfg2.storage_dir == fs::path(home) / "store");
 

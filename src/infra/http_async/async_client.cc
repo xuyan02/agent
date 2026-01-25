@@ -20,11 +20,9 @@
 namespace http {
 namespace {
 
-static size_t WriteBodyCb(char* ptr, size_t size, size_t nmemb, void* userdata) {
-  auto* out = static_cast<std::string*>(userdata);
-  out->append(ptr, size * nmemb);
-  return size * nmemb;
-}
+struct Inflight;
+
+static size_t WriteBodyCb(char* ptr, size_t size, size_t nmemb, void* userdata);
 
 struct HeaderCapture {
   std::vector<Header>* headers;
@@ -81,14 +79,61 @@ struct Inflight {
   std::atomic<bool> cancelled{false};
 };
 
+static size_t WriteBodyCb(char* ptr, size_t size, size_t nmemb, void* userdata) {
+  const size_t n = size * nmemb;
+  auto* in = static_cast<Inflight*>(userdata);
+  if (!in) return n;
+
+  if (in->req.on_body_chunk) {
+    const bool ok = in->req.on_body_chunk(ptr, n);
+    if (!ok) return 0; // abort
+  }
+
+  in->result.response.body.append(ptr, n);
+  return n;
+}
+
+
+namespace {
+
+bool DebugHttp() {
+  const char* v = std::getenv("CPP_AGENT_DEBUG_HTTP");
+  return v && *v && strcmp(v, "0") != 0;
+}
+
+const char* CurlPollToStr(int what) {
+  static thread_local char buf[64];
+  buf[0] = '\0';
+  if (what == CURL_POLL_REMOVE) return "REMOVE";
+  if (what & CURL_POLL_IN) strcat(buf, "IN|");
+  if (what & CURL_POLL_OUT) strcat(buf, "OUT|");
+  if (what & CURL_POLL_INOUT) {
+    // INOUT implies IN|OUT; keep as-is.
+  }
+  const size_t n = strlen(buf);
+  if (n > 0 && buf[n - 1] == '|') buf[n - 1] = '\0';
+  if (buf[0] == '\0') strcpy(buf, "(none)");
+  return buf;
+}
+
+} // namespace
+
 static void PumpMulti(GlobalState* g, curl_socket_t s, int ev_bitmask);
 
 static int SocketCb(CURL* /*easy*/, curl_socket_t s, int what, void* userp, void* /*socketp*/) {
   auto* g = static_cast<GlobalState*>(userp);
   if (!g || !g->loop) return 0;
 
+  if (DebugHttp()) {
+    std::fprintf(stderr, "[cpp-agent.http] curl socket_cb fd=%d what=%s raw=%d\n", (int)s,
+                 CurlPollToStr(what), what);
+  }
+
   if (what == CURL_POLL_REMOVE) {
     g->fd_actions.erase(static_cast<int>(s));
+    if (DebugHttp()) {
+      std::fprintf(stderr, "[cpp-agent.http] UnwatchFd fd=%d\n", (int)s);
+    }
     g->loop->UnwatchFd(static_cast<int>(s));
     return 0;
   }
@@ -113,6 +158,13 @@ static int SocketCb(CURL* /*easy*/, curl_socket_t s, int what, void* userp, void
     PumpMulti(g, s, CURL_CSELECT_ERR);
   });
 
+  if (DebugHttp()) {
+    std::fprintf(stderr, "[cpp-agent.http] WatchFd fd=%d want=%s (readable=%d writable=%d)\n",
+                 (int)s,
+                 CurlPollToStr(what),
+                 (int)((what & CURL_POLL_IN) != 0),
+                 (int)((what & CURL_POLL_OUT) != 0));
+  }
   g->loop->WatchFd(static_cast<int>(s), std::move(cbs));
   return 0;
 }
@@ -124,14 +176,23 @@ static int TimerCb(CURLM* /*multi*/, long timeout_ms, void* userp) {
   // Cancel any previous scheduled timer.
   const uint64_t gen = g->timer_gen.fetch_add(1) + 1;
 
+  if (DebugHttp()) {
+    std::fprintf(stderr, "[cpp-agent.http] curl timer_cb timeout_ms=%ld\n", timeout_ms);
+  }
+
   if (timeout_ms < 0) {
     return 0;
   }
 
   g->loop->task_runner()->PostDelayedTask(
       dust::Duration::FromMilliseconds(timeout_ms),
-      dust::OnceClosure([g, gen]() {
+      dust::OnceClosure([g, gen, timeout_ms]() {
         if (g->timer_gen.load() != gen) return;
+        if (DebugHttp()) {
+          std::fprintf(stderr, "[cpp-agent.http] timer fired gen=%llu timeout_ms=%ld\n",
+                       (unsigned long long)gen,
+                       timeout_ms);
+        }
         PumpMulti(g, CURL_SOCKET_TIMEOUT, 0);
       }));
 
@@ -183,6 +244,10 @@ static void DrainCompletions(GlobalState* g) {
 
 static void PumpMulti(GlobalState* g, curl_socket_t s, int ev_bitmask) {
   if (!g || !g->multi) return;
+
+  if (DebugHttp()) {
+    std::fprintf(stderr, "[cpp-agent.http] PumpMulti fd=%d ev_bitmask=0x%x\n", (int)s, ev_bitmask);
+  }
 
   int running = 0;
   CURLMcode mrc = curl_multi_socket_action(g->multi, s, ev_bitmask, &running);
@@ -243,7 +308,7 @@ static void SetupEasy(Inflight* in) {
 
   // Response capture.
   DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, &WriteBodyCb), "CURLOPT_WRITEFUNCTION");
-  DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_WRITEDATA, &in->result.response.body), "CURLOPT_WRITEDATA");
+  DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_WRITEDATA, in), "CURLOPT_WRITEDATA");
 
   DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_HEADERFUNCTION, &WriteHeaderCb), "CURLOPT_HEADERFUNCTION");
   DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_HEADERDATA, &in->header_cap), "CURLOPT_HEADERDATA");

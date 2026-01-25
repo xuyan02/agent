@@ -130,9 +130,9 @@ AppConfig load_config_or_throw(const std::filesystem::path& path) {
   auto json = read_all_or_throw(expand_user_home(path));
 
   AppConfig cfg;
-  cfg.openai.base_url = resolve_env_value(extract_json_string_or_throw(json, "base_url"));
-  cfg.openai.api_key = resolve_env_value(extract_json_string_or_throw(json, "api_key"));
-  cfg.openai.model = resolve_env_value(extract_json_string_or_throw(json, "model"));
+  cfg.llm.providers_json_path = expand_user_home(resolve_env_value(
+      extract_json_string_or_default(json, "providers_json_path", "~/.cpp-agent/llm.json")));
+  cfg.llm.model = resolve_env_value(extract_json_string_or_throw(json, "model"));
 
   cfg.project_root = expand_user_home(resolve_env_value(extract_json_string_or_throw(json, "project_root")));
   cfg.storage_dir = expand_user_home(resolve_env_value(extract_json_string_or_throw(json, "storage_dir")));

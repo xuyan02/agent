@@ -1,13 +1,14 @@
 #include "core/agent.h"
 
-#include "core/errors.h"
 #include "core/tool_log.h"
+
+#include "dust/message_loop/message_loop.h"
 
 #include <sstream>
 
 namespace cpp_agent::core {
 
-Agent::Agent(interfaces::ILlmClient& llm,
+Agent::Agent(cpp_agent::infra::llm::LlmContext& llm,
              interfaces::IConsole& console,
              interfaces::IStorage& storage,
              Policy policy,
@@ -29,21 +30,23 @@ Agent::Agent(interfaces::ILlmClient& llm,
   conv_.add(std::move(sys));
 }
 
-void Agent::repl() {
-  console_.print_line("cpp-agent (type /exit to quit)");
-  for (;;) {
-    auto line = console_.read_line("> ");
-    if (!line) break;
-    if (*line == "/exit") break;
+void Agent::Repl(dust::MessageLoop& loop) {
+  console_.PrintLine("cpp-agent (type /exit to quit)");
 
-    if (*line == "/plan") {
-      console_.print_line(plan_store_.render_markdown());
-      continue;
+  console_.SetOnLine([this, &loop](std::string line) {
+    if (line == "/exit") {
+      loop.Quit();
+      return;
     }
 
-    if (line->empty()) continue;
-    handle_user_input(*line);
-  }
+    if (line == "/plan") {
+      console_.PrintLine(plan_store_.render_markdown());
+      return;
+    }
+
+    if (line.empty()) return;
+    handle_user_input(line);
+  });
 }
 
 void Agent::handle_user_input(const std::string& input) {
@@ -69,56 +72,26 @@ void Agent::handle_user_input(const std::string& input) {
 
   storage_.append_log_line(std::string("user: ") + input);
 
-  // First LLM call.
+  // For now, streaming only supports a single assistant response without tool calls.
+  bool done = false;
+
+  auto on_token = [this](std::string tok) {
+    console_.Print(tok);
+    storage_.append_log_line(std::string("assistant_token: ") + tok);
+  };
+
+  auto on_done = [&]() {
+    done = true;
+  };
+
+  // NOTE: This uses a minimal prompt path. We'll map full conversation+tools next.
   refresh_system_prompt_from_plan();
-  auto resp = llm_.complete(conv_.messages(), llm_options_);
 
-  // Tool loop.
-  // Iterate until the assistant stops requesting tool calls, or we hit a safety cap.
-  for (int iter = 0; iter < 8; ++iter) {
-    if (resp.assistant_message.tool_calls.empty()) {
-      conv_.add(resp.assistant_message);
-      break;
-    }
-
-    // Add the assistant message that requested tools (must include tool_calls) before tool results.
-    conv_.add(resp.assistant_message);
-
-    interfaces::ToolContext ctx{policy_};
-
-    for (const auto& tc : resp.assistant_message.tool_calls) {
-      auto it = tools_.find(tc.name);
-      if (it == tools_.end()) {
-        ToolResult tr;
-        tr.tool_call_id = tc.id;
-        tr.ok = false;
-        tr.content = "Tool not found: " + tc.name;
-        console_.print_line(format_tool_log_line(tc, tr));
-
-        Message tool_msg;
-        tool_msg.role = Role::kTool;
-        tool_msg.tool_result = tr;
-        tool_msg.content = tr.content;
-        conv_.add(std::move(tool_msg));
-        continue;
-      }
-
-      auto tr = it->second->invoke(tc.id, tc.arguments_json, ctx);
-      console_.print_line(format_tool_log_line(tc, tr));
-
-      Message tool_msg;
-      tool_msg.role = Role::kTool;
-      tool_msg.tool_result = tr;
-      tool_msg.content = tr.content;
-      conv_.add(std::move(tool_msg));
-    }
-
-    refresh_system_prompt_from_plan();
-    resp = llm_.complete(conv_.messages(), llm_options_);
+  active_req_ = llm_.Create(llm_options_.model, input, std::move(on_token), std::move(on_done));
+  if (!active_req_) {
+    console_.PrintLine("error: failed to create llm request");
+    return;
   }
-
-  console_.print_line(resp.assistant_message.content);
-  storage_.append_log_line(std::string("assistant: ") + resp.assistant_message.content);
 }
 
 } // namespace cpp_agent::core

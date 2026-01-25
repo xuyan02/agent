@@ -38,8 +38,11 @@ public:
     return false;
   }
 
-  std::unique_ptr<cpp_agent::infra::llm::LlmRequest> Create(std::string model_name,
-                                                           std::string prompt) override {
+  std::unique_ptr<cpp_agent::infra::llm::LlmRequest> Create(
+      std::string model_name,
+      std::string prompt,
+      cpp_agent::infra::llm::LlmRequest::OnToken /*on_token*/,
+      cpp_agent::infra::llm::LlmRequest::OnDone /*on_done*/) override {
     events_->push_back("provider_create:" + name_ + ":" + model_name);
     return std::make_unique<FakeRequest>(events_, std::move(prompt));
   }
@@ -66,19 +69,19 @@ int main() {
 
   // Unknown model returns nullptr.
   {
-    auto req = reg.Create("missing", "hi");
+    auto req = reg.Create("missing", "hi", {}, {});
     assert(req == nullptr);
   }
 
   // Model selection picks the FIRST provider that supports it.
   {
-    auto req = reg.Create("model-a", "hello");
+    auto req = reg.Create("model-a", "hello", {}, {});
     assert(req != nullptr);
   }
 
   // This should be served by the second provider.
   {
-    auto req = reg.Create("model-b", "world");
+    auto req = reg.Create("model-b", "world", {}, {});
     assert(req != nullptr);
   }
 

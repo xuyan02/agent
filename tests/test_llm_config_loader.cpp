@@ -35,8 +35,11 @@ public:
 
   bool SupportsModel(const std::string& model_name) const override { return model_name == model_; }
 
-  std::unique_ptr<cpp_agent::infra::llm::LlmRequest> Create(std::string model_name,
-                                                           std::string prompt) override {
+  std::unique_ptr<cpp_agent::infra::llm::LlmRequest> Create(
+      std::string model_name,
+      std::string prompt,
+      cpp_agent::infra::llm::LlmRequest::OnToken /*on_token*/,
+      cpp_agent::infra::llm::LlmRequest::OnDone /*on_done*/) override {
     events_->push_back("provider_create:" + name_ + ":" + model_name);
     return std::make_unique<FakeRequest>(events_, std::move(prompt));
   }
@@ -90,7 +93,7 @@ int main() {
   const std::string json = R"JSON(
 {
   "providers": [
-    {"name": "fake", "models": ["model-x"], "params": {"k": "v"}}
+    {"type": "fake", "name": "fake1", "models": ["model-x"], "params": {"k": "v"}}
   ]
 }
 )JSON";
@@ -100,13 +103,13 @@ int main() {
   assert(ok);
 
   {
-    auto req = ctx.Create("model-x", "hello");
+    auto req = ctx.Create("model-x", "hello", {}, {});
     assert(req != nullptr);
   }
 
   const std::vector<std::string> expected = {
-      "factory_create:fake:model-x",
-      "provider_create:fake:model-x",
+      "factory_create:fake1:model-x",
+      "provider_create:fake1:model-x",
       "connect",
       "send:hello",
       "disconnect",

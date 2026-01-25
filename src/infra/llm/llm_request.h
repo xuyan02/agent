@@ -1,6 +1,8 @@
 #pragma once
 
 #include <memory>
+#include "dust/functional/closure.h"
+
 #include <string>
 
 namespace cpp_agent::infra::llm {
@@ -13,6 +15,9 @@ namespace cpp_agent::infra::llm {
 // - Destruction must disconnect / release underlying resources.
 class LlmRequest {
 public:
+  using OnToken = dust::Function<void(std::string)>;
+  using OnDone = dust::OnceFunction<void()>;
+
   virtual ~LlmRequest() = default;
 
   LlmRequest(const LlmRequest&) = delete;

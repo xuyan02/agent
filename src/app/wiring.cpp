@@ -3,7 +3,8 @@
 #include "core/agent.h"
 #include "core/policy.h"
 #include "infra/console/cli_console.h"
-#include "infra/http/openai_client.h"
+#include "infra/llm/llm_config_loader.h"
+#include "infra/llm/openai_provider_factory.h"
 #include "infra/storage/json_file_storage.h"
 #include "infra/tools/file_tools.h"
 #include "infra/tools/plan_toolset.h"
@@ -16,11 +17,17 @@
 
 namespace cpp_agent::app {
 
-std::unique_ptr<cpp_agent::core::Agent> build_agent_or_throw(const AppConfig& cfg) {
-  static cpp_agent::infra::console::CliConsole console;
+std::unique_ptr<cpp_agent::core::Agent> build_agent_or_throw(const AppConfig& cfg,
+                                                             cpp_agent::interfaces::IConsole& console) {
   static cpp_agent::infra::storage::JsonFileStorage storage(cfg.storage_dir);
-  static cpp_agent::infra::http::OpenAIClient llm(cfg.openai.base_url, cfg.openai.api_key);
-  llm.set_log_requests(cfg.debug.log_llm);
+  // LLM providers (streaming via infra/llm).
+  static cpp_agent::infra::llm::LlmContext llm;
+  static bool llm_inited = false;
+  if (!llm_inited) {
+    llm_inited = true;
+    llm.RegisterFactory(std::make_unique<cpp_agent::infra::llm::OpenAIProviderFactory>());
+    (void)cpp_agent::infra::llm::RegisterProvidersFromConfig(llm, cfg.llm.providers_json_path);
+  }
 
   cpp_agent::core::Policy policy(cfg.project_root);
 
@@ -29,37 +36,14 @@ std::unique_ptr<cpp_agent::core::Agent> build_agent_or_throw(const AppConfig& cf
   plan_store->load();
 
   std::unordered_map<std::string, std::unique_ptr<cpp_agent::interfaces::ITool>> tools;
-  tools.emplace("plan_add", std::make_unique<cpp_agent::infra::tools::PlanAddTool>(plan_store));
-  tools.emplace("plan_complete", std::make_unique<cpp_agent::infra::tools::PlanCompleteTool>(plan_store));
-  tools.emplace("plan_switch", std::make_unique<cpp_agent::infra::tools::PlanSwitchTool>(plan_store));
-  tools.emplace("plan_replan", std::make_unique<cpp_agent::infra::tools::PlanReplanTool>(plan_store));
-  tools.emplace("read_file", std::make_unique<cpp_agent::infra::tools::ReadFileTool>());
-  tools.emplace("write_file", std::make_unique<cpp_agent::infra::tools::WriteFileTool>());
-
-  llm.set_tools_json("["
-                    "{\"type\":\"function\",\"function\":{\"name\":\"plan_add\",\"description\":\"Add a task as a sibling. If after_no is provided, insert into after_no's parent.children right after it; otherwise append to root tasks.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"after_no\":{\"type\":\"string\"},\"goal\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"}},\"required\":[\"goal\",\"title\"]}}},"
-                    "{\"type\":\"function\",\"function\":{\"name\":\"plan_switch\",\"description\":\"Switch active task to the given no; if it has children, switches to its first incomplete leaf (DFS)\",\"parameters\":{\"type\":\"object\",\"properties\":{\"no\":{\"type\":\"string\"}},\"required\":[\"no\"]}}},"
-                    "{\"type\":\"function\",\"function\":{\"name\":\"plan_complete\",\"description\":\"Complete a task by no. Root tasks are deleted immediately; non-root tasks are marked completed=true and kept in the tree (rendered with ~~strike~~).\",\"parameters\":{\"type\":\"object\",\"properties\":{\"no\":{\"type\":\"string\"}},\"required\":[\"no\"]}}},"
-                    "{\"type\":\"function\",\"function\":{\"name\":\"plan_replan\",\"description\":\"Replace children list. history_line required.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"no\":{\"type\":\"string\"},\"history_line\":{\"type\":\"string\"},\"new_children\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"goal\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"children\":{\"type\":\"array\",\"items\":{\"type\":\"object\"}}},\"required\":[\"goal\",\"title\"]}}},\"required\":[\"no\",\"history_line\",\"new_children\"]}}}},"
-                    "{\"type\":\"function\",\"function\":{\"name\":\"read_file\",\"description\":\"Read a text file\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"]}}},"
-                    "{\"type\":\"function\",\"function\":{\"name\":\"write_file\",\"description\":\"Write a text file\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"}},\"required\":[\"path\",\"content\"]}}}"
-                    "]");
+  // Tool calling is disabled in streaming mode (for now).
 
   if (cfg.shell.enabled) {
-    tools.emplace("run_shell_command", std::make_unique<cpp_agent::infra::tools::ShellTool>(cfg.shell.timeout_ms));
-    llm.set_tools_json("["
-                      "{\"type\":\"function\",\"function\":{\"name\":\"plan_add\",\"description\":\"Add a task as a sibling. If after_no is provided, insert into after_no's parent.children right after it; otherwise append to root tasks.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"after_no\":{\"type\":\"string\"},\"goal\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"}},\"required\":[\"goal\",\"title\"]}}},"
-                      "{\"type\":\"function\",\"function\":{\"name\":\"plan_switch\",\"description\":\"Switch active task to the given no; if it has children, switches to its first incomplete leaf (DFS)\",\"parameters\":{\"type\":\"object\",\"properties\":{\"no\":{\"type\":\"string\"}},\"required\":[\"no\"]}}},"
-                      "{\"type\":\"function\",\"function\":{\"name\":\"plan_complete\",\"description\":\"Complete a task by no. Root tasks are deleted immediately; non-root tasks are marked completed=true and kept in the tree (rendered with ~~strike~~).\",\"parameters\":{\"type\":\"object\",\"properties\":{\"no\":{\"type\":\"string\"}},\"required\":[\"no\"]}}},"
-                      "{\"type\":\"function\",\"function\":{\"name\":\"plan_replan\",\"description\":\"Replace children list. history_line required.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"no\":{\"type\":\"string\"},\"history_line\":{\"type\":\"string\"},\"new_children\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"goal\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"children\":{\"type\":\"array\",\"items\":{\"type\":\"object\"}}},\"required\":[\"goal\",\"title\"]}}},\"required\":[\"no\",\"history_line\",\"new_children\"]}}},"
-                      "{\"type\":\"function\",\"function\":{\"name\":\"read_file\",\"description\":\"Read a text file\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"]}}},"
-                      "{\"type\":\"function\",\"function\":{\"name\":\"write_file\",\"description\":\"Write a text file\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"}},\"required\":[\"path\",\"content\"]}}},"
-                      "{\"type\":\"function\",\"function\":{\"name\":\"run_shell_command\",\"description\":\"Run a shell command\",\"parameters\":{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\"}},\"required\":[\"command\"]}}}"
-                      "]");
+    // no-op
   }
 
   cpp_agent::interfaces::LlmOptions opt;
-  opt.model = cfg.openai.model;
+  opt.model = cfg.llm.model;
 
   auto plan_prompt_path = cfg.project_root / cfg.plan_prompt_path;
   std::string plan_prompt_md;

@@ -20,8 +20,13 @@ struct DebugConfig {
   bool log_llm{false};
 };
 
+struct LlmConfig {
+  std::filesystem::path providers_json_path{"~/.cpp-agent/llm.json"};
+  std::string model;
+};
+
 struct AppConfig {
-  OpenAIConfig openai;
+  LlmConfig llm;
   std::filesystem::path project_root{"."};
   std::filesystem::path storage_dir{"~/.micode-cpp"};
   std::filesystem::path plan_prompt_path{"config/plan_prompt.md"};

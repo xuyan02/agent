@@ -1,3 +1,6 @@
+#include "dust/message_loop/linux_message_pump_epoll.h"
+#include "dust/message_loop/message_loop.h"
+
 #include "core/agent.h"
 
 #include "core/policy.h"
@@ -15,19 +18,18 @@ namespace {
 
 class FakeConsole final : public cpp_agent::interfaces::IConsole {
 public:
-  void print_line(const std::string& line) override { last_line = line; }
+  void PrintLine(const std::string& line) override { last_line = line; }
+  void Print(const std::string& s) override { stream += s; }
 
-  std::optional<std::string> read_line(const std::string& /*prompt*/) override {
-    if (read_line_result) {
-      auto out = read_line_result;
-      read_line_result.reset();
-      return out;
-    }
-    return std::string("/exit");
+  void SetOnLine(dust::Function<void(std::string)> on_line) override { on_line_ = std::move(on_line); }
+
+  void EmitLine(std::string line) {
+    if (on_line_) on_line_(std::move(line));
   }
 
-  std::optional<std::string> read_line_result;
+  dust::Function<void(std::string)> on_line_;
   std::string last_line;
+  std::string stream;
 };
 
 class FakeLlm final : public cpp_agent::interfaces::ILlmClient {
@@ -88,7 +90,7 @@ int main() {
   cpp_agent::core::Policy policy(std::filesystem::current_path());
 
   // Feed a repl command then one line of user input.
-  console.read_line_result = std::string("/plan");
+  // Provide an initial line when the agent sets the callback.
 
   auto plan_path = std::filesystem::temp_directory_path() / "cpp-agent-test-plan.json";
   std::error_code ec;
@@ -103,8 +105,11 @@ int main() {
 
   cpp_agent::core::Agent agent(llm, console, storage, std::move(policy), std::move(tools), opt, *store, "");
 
-  // Drive via repl() since handle_user_input is private.
-  agent.repl();
+  // Drive via Repl() since handle_user_input is private.
+  dust::MessageLoop loop(std::make_unique<dust::LinuxMessagePumpEpoll>());
+  agent.Repl(loop);
+
+  console.EmitLine("/plan");
 
   // /plan prints the rendered markdown from plan.render tool.
   assert(console.last_line.find("# Tasks") != std::string::npos);

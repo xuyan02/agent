@@ -2,7 +2,8 @@
 
 #include "infra/llm/llm_provider.h"
 
-#include "infra/http/openai_client.h"
+#include "infra/http_async/async_client.h"
+#include "infra/llm/sse_parser.h"
 
 #include <memory>
 #include <string>
@@ -12,13 +13,29 @@ namespace cpp_agent::infra::llm {
 
 class OpenAIRequest final : public LlmRequest {
 public:
-  OpenAIRequest(std::shared_ptr<cpp_agent::infra::http::OpenAIClient> client,
+  OpenAIRequest(std::string base_url,
+                std::string api_key,
                 std::string model_name,
-                std::string prompt);
+                std::string prompt,
+                OnToken on_token,
+                OnDone on_done);
+
   ~OpenAIRequest() override;
 
 private:
-  std::shared_ptr<cpp_agent::infra::http::OpenAIClient> client_;
+  bool HandleSseDataLine(const std::string& data_line);
+
+  http::AsyncClient http_;
+
+  http::Call call_;
+  SseParser sse_;
+
+  std::string base_url_;
+  std::string api_key_;
+  std::string model_name_;
+
+  OnToken on_token_;
+  OnDone on_done_;
 };
 
 class OpenAIProvider final : public LlmProvider {
@@ -30,7 +47,10 @@ public:
 
   std::string name() const override { return name_; }
   bool SupportsModel(const std::string& model_name) const override;
-  std::unique_ptr<LlmRequest> Create(std::string model_name, std::string prompt) override;
+  std::unique_ptr<LlmRequest> Create(std::string model_name,
+                                    std::string prompt,
+                                    LlmRequest::OnToken on_token,
+                                    LlmRequest::OnDone on_done) override;
 
 private:
   std::string name_;

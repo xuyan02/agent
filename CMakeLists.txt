@@ -18,6 +18,7 @@ add_library(cpp_agent_lib
   src/infra/llm/llm_context.cpp
   src/infra/llm/llm_config_loader.cpp
   src/infra/llm/json_min.cpp
+  src/infra/llm/sse_parser.cpp
   src/infra/llm/openai_provider.cpp
   src/infra/llm/openai_provider_factory.cpp
   src/infra/plan/plan_model.cpp
@@ -153,11 +154,12 @@ if(CPP_AGENT_BUILD_TESTS)
   target_link_libraries(cpp-agent-tests-tool-calls-parsing PRIVATE cpp_agent_lib)
   add_test(NAME cpp-agent-tests-tool-calls-parsing COMMAND cpp-agent-tests-tool-calls-parsing)
 
-  add_executable(cpp-agent-tests-agent-tool-loop
-    tests/test_agent_tool_loop.cpp
-  )
-  target_link_libraries(cpp-agent-tests-agent-tool-loop PRIVATE cpp_agent_lib)
-  add_test(NAME cpp-agent-tests-agent-tool-loop COMMAND cpp-agent-tests-agent-tool-loop)
+  # Tool calling disabled in streaming-only mode for now.
+  # add_executable(cpp-agent-tests-agent-tool-loop
+  #   tests/test_agent_tool_loop.cpp
+  # )
+  # target_link_libraries(cpp-agent-tests-agent-tool-loop PRIVATE cpp_agent_lib)
+  # add_test(NAME cpp-agent-tests-agent-tool-loop COMMAND cpp-agent-tests-agent-tool-loop)
 
   add_executable(cpp-agent-tests-plan-replan
     tests/test_plan_replan.cpp
