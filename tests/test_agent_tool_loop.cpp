@@ -97,18 +97,17 @@ int main() {
   store->load();
 
   std::unordered_map<std::string, std::unique_ptr<cpp_agent::interfaces::ITool>> tools;
-  tools.emplace("plan.render", std::make_unique<cpp_agent::infra::tools::PlanRenderTool>(store));
 
   cpp_agent::interfaces::LlmOptions opt;
   opt.model = "fake";
 
-  cpp_agent::core::Agent agent(llm, console, storage, std::move(policy), std::move(tools), opt);
+  cpp_agent::core::Agent agent(llm, console, storage, std::move(policy), std::move(tools), opt, *store, "");
 
   // Drive via repl() since handle_user_input is private.
   agent.repl();
 
   // /plan prints the rendered markdown from plan.render tool.
-  assert(console.last_line.find("## Tasks") != std::string::npos);
+  assert(console.last_line.find("# Tasks") != std::string::npos);
 
   // /plan should not contact the LLM.
   assert(llm.calls == 0);

@@ -106,12 +106,12 @@ set_target_properties(ZLIB::ZLIB PROPERTIES
 add_dependencies(ZLIB::ZLIB zlibstatic)
 
 # Fully static build is best-effort; TLS/backends may still require system deps.
-# NOTE: curl's CMake runs find_package(OpenSSL) at configure-time, so a pure
-# ExternalProject-built OpenSSL cannot satisfy it without a second configure.
-# For now, prefer installing system OpenSSL dev package.
 add_subdirectory(third_party/curl EXCLUDE_FROM_ALL)
 
 target_link_libraries(cpp_agent_lib PRIVATE libcurl)
+# curl's include directory isn't propagated via libcurl here (it's built as a subdir),
+# so add it explicitly to our library.
+target_include_directories(cpp_agent_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/curl/include)
 
 add_executable(cpp-agent src/app/main.cpp)
 target_link_libraries(cpp-agent PRIVATE cpp_agent_lib)

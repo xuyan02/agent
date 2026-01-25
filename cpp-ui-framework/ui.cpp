@@ -1,0 +1,1 @@
+// C++ UI Frameworknn#include u003ciostreamu003ennclass Button {npublic:n    void click() {n        std::cout u003cu003c "Button clicked!" u003cu003c std::endl;n    }n};nnclass Input {npublic:n    void setPlaceholder(const std::stringu0026 placeholder) {n        std::cout u003cu003c "Input placeholder set to: " u003cu003c placeholder u003cu003c std::endl;n    }n};n

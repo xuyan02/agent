@@ -249,6 +249,7 @@ static Task parse_task_object(const std::string& s, size_t start, size_t end) {
   if (goal) t.goal = *goal;
   if (title) t.title = *title;
   t.active = find_bool_field(s, "active", start, end);
+  t.completed = find_bool_field(s, "completed", start, end);
   t.history = parse_string_array_field(s, "history", start, end);
 
   auto children_pos = find_field_value_start(s, "children", start, end);
@@ -281,6 +282,9 @@ static void write_task_json(std::ostringstream& oss, const Task& t) {
   oss << "\"title\":\"" << json_escape(t.title) << "\"";
   if (t.active) {
     oss << ",\"active\":true";
+  }
+  if (t.completed) {
+    oss << ",\"completed\":true";
   }
   if (!t.history.empty()) {
     oss << ",\"history\":[";
@@ -331,8 +335,9 @@ static void render_task(std::ostringstream& oss,
 
   oss << pad << no << ". ";
   if (make_bold) oss << "**";
-  // completed display: recently_completed handled elsewhere
+  if (t.completed) oss << "~~";
   oss << t.title;
+  if (t.completed) oss << "~~";
   if (make_bold) oss << "**";
   oss << "\n";
 
@@ -397,14 +402,14 @@ TaskRef PlanStore::find_locked(const TaskNo& no) {
 std::string PlanStore::render_markdown() {
   std::lock_guard<std::mutex> lock(mu_);
   std::ostringstream oss;
-  oss << "## Tasks\n";
+  oss << "# Tasks\n";
 
   auto chain = compute_active_chain(plan_.tasks);
   for (size_t i = 0; i < plan_.tasks.size(); ++i) {
     render_task(oss, plan_.tasks[i], std::to_string(i + 1), false, chain, 0);
   }
 
-  // Render recently completed markers in-place (best-effort) after normal tasks.
+  // Render recently completed root markers (best-effort) after normal tasks.
   // If numbering drifted since completion, the marker may appear under a wrong prefix.
   for (const auto& m : recently_completed_) {
     oss << to_string(m.no) << ". ~~" << m.title << "~~\n";
@@ -426,43 +431,54 @@ std::string PlanStore::add(const std::optional<TaskNo>& parent_no,
                            const std::string& goal,
                            const std::string& title,
                            const std::optional<TaskNo>& after_no) {
+  (void)parent_no;
   std::lock_guard<std::mutex> lock(mu_);
 
   Task t;
   t.goal = goal;
   t.title = title;
 
-  if (!parent_no) {
-    int after_index = -1;
-    if (after_no) {
-      auto ref = find_by_no(plan_, *after_no);
-      if (ref.task && !ref.parent) after_index = ref.index;
-    }
-    insert_task(plan_.tasks, std::move(t), after_index);
+  if (!after_no) {
+    // Append to root tasks.
+    plan_.tasks.push_back(std::move(t));
     persist_locked();
     return "ok";
   }
 
-  auto parent_ref = find_by_no(plan_, *parent_no);
-  if (!parent_ref.task) return "Parent not found";
+  auto ref = find_by_no(plan_, *after_no);
+  if (!ref.task) return "after_no not found";
 
-  int after_index = -1;
-  if (after_no) {
-    auto ref = find_by_no(plan_, *after_no);
-    if (ref.task && ref.parent == parent_ref.task) after_index = ref.index;
+  if (!ref.parent) {
+    // Insert after a root task.
+    insert_task(plan_.tasks, std::move(t), ref.index);
+    persist_locked();
+    return "ok";
   }
-  insert_task(parent_ref.task->children, std::move(t), after_index);
+
+  // Insert after a non-root task within its parent's children.
+  insert_task(ref.parent->children, std::move(t), ref.index);
   persist_locked();
   return "ok";
 }
 
-std::string PlanStore::active(const TaskNo& no) {
+std::string PlanStore::switch_to(const TaskNo& no) {
   std::lock_guard<std::mutex> lock(mu_);
   auto ref = find_by_no(plan_, no);
   if (!ref.task) return "Task not found";
-  if (!ref.task->children.empty()) return "Task is not a leaf";
+
   clear_active(plan_);
-  ref.task->active = true;
+
+  if (ref.task->children.empty()) {
+    if (ref.task->completed) return "Task is completed";
+    ref.task->active = true;
+    persist_locked();
+    return "ok";
+  }
+
+  auto leaf = first_leaf(*ref.task);
+  if (!leaf.task) return "No incomplete leaf task";
+
+  leaf.task->active = true;
   persist_locked();
   return "ok";
 }
@@ -578,42 +594,49 @@ void PlanStore::migrate_active_after_deletion_locked() {
 std::string PlanStore::complete(const TaskNo& no) {
   std::lock_guard<std::mutex> lock(mu_);
 
-  // Track current active path before deletion.
-  Task* active_ptr = find_active_ptr(plan_.tasks);
-  std::vector<int> active_path;
-  if (active_ptr) {
-    build_path_to_active(plan_.tasks, active_ptr, active_path);
-  }
-
   auto ref = find_by_no(plan_, no);
   if (!ref.task) return "Task not found";
 
-  bool was_active = ref.task->active;
-
-  // Capture title and positional address for strike-through rendering.
-  CompletedMarker m;
-  m.no = no;
-  m.title = ref.task->title;
-  recently_completed_.push_back(std::move(m));
-
   if (!ref.parent) {
+    // Root task: mark completed and delete immediately.
+    CompletedMarker m;
+    m.no = no;
+    m.title = ref.task->title;
+    recently_completed_.push_back(std::move(m));
+
     plan_.tasks.erase(plan_.tasks.begin() + ref.index);
-  } else {
-    ref.parent->children.erase(ref.parent->children.begin() + ref.index);
-  }
 
-  if (was_active || active_ptr == ref.task) {
+    // If active was inside this subtree, clear and then pick any remaining leaf.
     clear_active(plan_);
+    ensure_active_leaf_or_clear_locked();
+
+    persist_locked();
+    return "ok";
   }
 
-  // Recompute next active leaf near the previous active path.
-  if (!active_path.empty()) {
-    auto leaf = find_leaf_next_to_path(plan_.tasks, active_path);
-    if (leaf.task) {
-      clear_active(plan_);
-      leaf.task->active = true;
+  // Non-root task: mark completed in-place.
+  ref.task->completed = true;
+
+  // If we completed the active leaf, migrate active according to rule B.
+  if (ref.task->active) {
+    std::vector<int> active_path;
+    Task* active_ptr = ref.task;
+    build_path_to_active(plan_.tasks, active_ptr, active_path);
+
+    // Mark inactive before computing the fallback leaf (find_leaf_next_to_path relies on the path).
+    clear_active(plan_);
+
+    if (!active_path.empty()) {
+      // Prefer siblings under the same parent; use the parent's sibling vector.
+      if (active_path.size() >= 2) {
+        active_path.pop_back();
+      }
+
+      auto alt = find_leaf_next_to_path(plan_.tasks, active_path);
+      if (alt.task) alt.task->active = true;
     }
   }
+
   ensure_active_leaf_or_clear_locked();
 
   persist_locked();
@@ -665,7 +688,7 @@ std::string PlanStore::replan(const TaskNo& no,
 }
 
 void PlanStore::ensure_active_leaf_or_clear_locked() {
-  // Ensure at most one active; keep first leaf active if multiple.
+  // Ensure at most one active, and active must be an incomplete leaf.
   Task* found = nullptr;
   std::vector<Task*> stack;
   for (auto& t : plan_.tasks) stack.push_back(&t);
@@ -674,7 +697,7 @@ void PlanStore::ensure_active_leaf_or_clear_locked() {
     stack.pop_back();
     if (t->active) {
       if (!found) {
-        if (t->children.empty()) {
+        if (t->children.empty() && !t->completed) {
           found = t;
         } else {
           t->active = false;
@@ -686,7 +709,19 @@ void PlanStore::ensure_active_leaf_or_clear_locked() {
     for (auto& c : t->children) stack.push_back(&c);
   }
 
-  if (!found) return;
+  if (!found) {
+    // Pick the first incomplete leaf.
+    for (auto& t : plan_.tasks) {
+      auto leaf = first_leaf(t);
+      if (leaf.task && !leaf.task->completed) {
+        clear_active(plan_);
+        leaf.task->active = true;
+        return;
+      }
+    }
+    clear_active(plan_);
+    return;
+  }
 }
 
 void PlanStore::persist_locked() {

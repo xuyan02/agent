@@ -12,13 +12,17 @@ Agent::Agent(interfaces::ILlmClient& llm,
              interfaces::IStorage& storage,
              Policy policy,
              std::unordered_map<std::string, std::unique_ptr<interfaces::ITool>> tools,
-             interfaces::LlmOptions llm_options)
+             interfaces::LlmOptions llm_options,
+             cpp_agent::infra::plan::PlanStore& plan_store,
+             std::string plan_prompt_md)
     : llm_(llm),
       console_(console),
       storage_(storage),
       policy_(std::move(policy)),
       tools_(std::move(tools)),
-      llm_options_(std::move(llm_options)) {
+      llm_options_(std::move(llm_options)),
+      plan_store_(plan_store),
+      plan_prompt_md_(std::move(plan_prompt_md)) {
   Message sys;
   sys.role = Role::kSystem;
   sys.content = "You are a CLI coding assistant. Prefer concise answers.";
@@ -33,18 +37,7 @@ void Agent::repl() {
     if (*line == "/exit") break;
 
     if (*line == "/plan") {
-      auto it = tools_.find("plan.render");
-      if (it != tools_.end()) {
-        interfaces::ToolContext ctx{policy_};
-        auto tr = it->second->invoke("plan_render", "{}", ctx);
-        if (tr.ok && !tr.content.empty()) {
-          console_.print_line(tr.content);
-        } else {
-          console_.print_line("(no plan)");
-        }
-      } else {
-        console_.print_line("(plan tool not available)");
-      }
+      console_.print_line(plan_store_.render_markdown());
       continue;
     }
 
@@ -54,18 +47,20 @@ void Agent::repl() {
 }
 
 void Agent::handle_user_input(const std::string& input) {
-  // Merge plan into the existing base system prompt to avoid multiple system messages.
-  if (auto it = tools_.find("plan.render"); it != tools_.end()) {
-    interfaces::ToolContext ctx{policy_};
-    auto tr = it->second->invoke("plan_render", "{}", ctx);
-    if (tr.ok && !tr.content.empty()) {
-      if (auto* sys = conv_.first_system_message(); sys) {
-        sys->content = "You are a CLI coding assistant. Prefer concise answers.\n\n";
-        sys->content += "Current plan:\n";
-        sys->content += tr.content;
+  auto refresh_system_prompt_from_plan = [&]() {
+    if (auto* sys = conv_.first_system_message(); sys) {
+      sys->content = "You are a CLI coding assistant. Prefer concise answers.\n\n";
+      if (!plan_prompt_md_.empty()) {
+        sys->content += plan_prompt_md_;
+        if (sys->content.back() != '\n') sys->content.push_back('\n');
+        sys->content.push_back('\n');
       }
+      sys->content += "Current plan:\n";
+      sys->content += plan_store_.render_markdown();
     }
-  }
+  };
+
+  refresh_system_prompt_from_plan();
 
   Message user;
   user.role = Role::kUser;
@@ -75,6 +70,7 @@ void Agent::handle_user_input(const std::string& input) {
   storage_.append_log_line(std::string("user: ") + input);
 
   // First LLM call.
+  refresh_system_prompt_from_plan();
   auto resp = llm_.complete(conv_.messages(), llm_options_);
 
   // Tool loop.
@@ -117,6 +113,7 @@ void Agent::handle_user_input(const std::string& input) {
       conv_.add(std::move(tool_msg));
     }
 
+    refresh_system_prompt_from_plan();
     resp = llm_.complete(conv_.messages(), llm_options_);
   }
 

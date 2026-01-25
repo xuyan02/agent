@@ -111,9 +111,27 @@ static TaskRef first_leaf_in_vec(std::vector<Task>& vec) {
   return {};
 }
 
+static TaskRef first_incomplete_leaf_in_vec(std::vector<Task>& vec) {
+  for (size_t i = 0; i < vec.size(); ++i) {
+    Task& t = vec[i];
+    if (t.children.empty()) {
+      if (!t.completed) return TaskRef{&t, nullptr, static_cast<int>(i)};
+      continue;
+    }
+    auto r = first_incomplete_leaf_in_vec(t.children);
+    if (r.task) {
+      if (!r.parent) r.parent = &t;
+      return r;
+    }
+  }
+  return {};
+}
+
 TaskRef first_leaf(Task& root) {
-  if (root.children.empty()) return TaskRef{&root, nullptr, 0};
-  auto r = first_leaf_in_vec(root.children);
+  if (root.children.empty()) {
+    return root.completed ? TaskRef{} : TaskRef{&root, nullptr, 0};
+  }
+  auto r = first_incomplete_leaf_in_vec(root.children);
   if (r.task && !r.parent) r.parent = &root;
   return r;
 }

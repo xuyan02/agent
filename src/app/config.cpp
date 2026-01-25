@@ -60,6 +60,18 @@ static std::string extract_json_string_or_throw(const std::string& json,
   return out;
 }
 
+static std::string extract_json_string_or_default(const std::string& json,
+                                                   const std::string& key,
+                                                   const std::string& def) {
+  auto pos = json.find('"' + key + '"');
+  if (pos == std::string::npos) return def;
+  try {
+    return extract_json_string_or_throw(json, key);
+  } catch (...) {
+    return def;
+  }
+}
+
 static bool extract_json_bool_or_default(const std::string& json, const std::string& key, bool def) {
   auto pos = json.find('"' + key + '"');
   if (pos == std::string::npos) return def;
@@ -124,6 +136,9 @@ AppConfig load_config_or_throw(const std::filesystem::path& path) {
 
   cfg.project_root = expand_user_home(resolve_env_value(extract_json_string_or_throw(json, "project_root")));
   cfg.storage_dir = expand_user_home(resolve_env_value(extract_json_string_or_throw(json, "storage_dir")));
+
+  cfg.plan_prompt_path = resolve_env_value(extract_json_string_or_default(json, "plan_prompt_path", "config/plan_prompt.md"));
+  cfg.plan_prompt_path = expand_user_home(cfg.plan_prompt_path);
 
   cfg.shell.enabled = extract_json_bool_or_default(json, "enabled", true);
   cfg.shell.timeout_ms = extract_json_int_or_default(json, "timeout_ms", 60000);

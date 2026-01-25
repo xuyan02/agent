@@ -22,7 +22,7 @@ private:
 class PlanAddTool final : public cpp_agent::interfaces::ITool {
 public:
   explicit PlanAddTool(std::shared_ptr<cpp_agent::infra::plan::PlanStore> store);
-  std::string name() const override { return "plan.add"; }
+  std::string name() const override { return "plan_add"; }
   cpp_agent::core::ToolResult invoke(const std::string& tool_call_id,
                                      const std::string& arguments_json,
                                      const cpp_agent::interfaces::ToolContext& ctx) override;
@@ -31,10 +31,10 @@ private:
   std::shared_ptr<cpp_agent::infra::plan::PlanStore> store_;
 };
 
-class PlanActiveTool final : public cpp_agent::interfaces::ITool {
+class PlanSwitchTool final : public cpp_agent::interfaces::ITool {
 public:
-  explicit PlanActiveTool(std::shared_ptr<cpp_agent::infra::plan::PlanStore> store);
-  std::string name() const override { return "plan.active"; }
+  explicit PlanSwitchTool(std::shared_ptr<cpp_agent::infra::plan::PlanStore> store);
+  std::string name() const override { return "plan_switch"; }
   cpp_agent::core::ToolResult invoke(const std::string& tool_call_id,
                                      const std::string& arguments_json,
                                      const cpp_agent::interfaces::ToolContext& ctx) override;
@@ -46,7 +46,7 @@ private:
 class PlanCompleteTool final : public cpp_agent::interfaces::ITool {
 public:
   explicit PlanCompleteTool(std::shared_ptr<cpp_agent::infra::plan::PlanStore> store);
-  std::string name() const override { return "plan.complete"; }
+  std::string name() const override { return "plan_complete"; }
   cpp_agent::core::ToolResult invoke(const std::string& tool_call_id,
                                      const std::string& arguments_json,
                                      const cpp_agent::interfaces::ToolContext& ctx) override;
@@ -58,7 +58,7 @@ private:
 class PlanReplanTool final : public cpp_agent::interfaces::ITool {
 public:
   explicit PlanReplanTool(std::shared_ptr<cpp_agent::infra::plan::PlanStore> store);
-  std::string name() const override { return "plan.replan"; }
+  std::string name() const override { return "plan_replan"; }
   cpp_agent::core::ToolResult invoke(const std::string& tool_call_id,
                                      const std::string& arguments_json,
                                      const cpp_agent::interfaces::ToolContext& ctx) override;

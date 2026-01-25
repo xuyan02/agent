@@ -24,6 +24,7 @@ struct AppConfig {
   OpenAIConfig openai;
   std::filesystem::path project_root{"."};
   std::filesystem::path storage_dir{"~/.micode-cpp"};
+  std::filesystem::path plan_prompt_path{"config/plan_prompt.md"};
   ShellConfig shell;
   DebugConfig debug;
 };

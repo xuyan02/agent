@@ -17,7 +17,7 @@ int main() {
   // Seed plan with one root task and one child, make child active.
   store->add(std::nullopt, "g1", "t1", std::nullopt);
   store->add(cpp_agent::infra::plan::parse_task_no("1"), "g1.1", "t1.1", std::nullopt);
-  store->active(*cpp_agent::infra::plan::parse_task_no("1.1"));
+  store->switch_to(*cpp_agent::infra::plan::parse_task_no("1.1"));
 
   cpp_agent::infra::tools::PlanReplanTool tool(store);
 

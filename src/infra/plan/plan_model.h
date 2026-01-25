@@ -12,6 +12,7 @@ struct Task {
   std::vector<std::string> history;
   std::vector<Task> children;
   bool active{false};
+  bool completed{false};
 };
 
 struct Plan {

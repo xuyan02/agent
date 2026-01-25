@@ -23,7 +23,7 @@ public:
                   const std::string& goal,
                   const std::string& title,
                   const std::optional<TaskNo>& after_no);
-  std::string active(const TaskNo& no);
+  std::string switch_to(const TaskNo& no);
   std::string complete(const TaskNo& no);
   std::string replan(const TaskNo& no,
                      std::vector<Task> new_children,

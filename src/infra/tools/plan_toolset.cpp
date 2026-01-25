@@ -216,15 +216,6 @@ cpp_agent::core::ToolResult PlanAddTool::invoke(const std::string& tool_call_id,
   }
 
   std::optional<cpp_agent::infra::plan::TaskNo> parent;
-  auto parent_no_str = extract_json_string_or_empty(arguments_json, "parent_no");
-  if (!parent_no_str.empty()) {
-    parent = cpp_agent::infra::plan::parse_task_no(parent_no_str);
-    if (!parent) {
-      tr.ok = false;
-      tr.content = "Invalid parent_no";
-      return tr;
-    }
-  }
 
   std::optional<cpp_agent::infra::plan::TaskNo> after;
   auto after_no_str = extract_json_string_or_empty(arguments_json, "after_no");
@@ -243,9 +234,9 @@ cpp_agent::core::ToolResult PlanAddTool::invoke(const std::string& tool_call_id,
   return tr;
 }
 
-PlanActiveTool::PlanActiveTool(std::shared_ptr<cpp_agent::infra::plan::PlanStore> store) : store_(std::move(store)) {}
+PlanSwitchTool::PlanSwitchTool(std::shared_ptr<cpp_agent::infra::plan::PlanStore> store) : store_(std::move(store)) {}
 
-cpp_agent::core::ToolResult PlanActiveTool::invoke(const std::string& tool_call_id,
+cpp_agent::core::ToolResult PlanSwitchTool::invoke(const std::string& tool_call_id,
                                                   const std::string& arguments_json,
                                                   const cpp_agent::interfaces::ToolContext& /*ctx*/) {
   cpp_agent::core::ToolResult tr;
@@ -259,7 +250,7 @@ cpp_agent::core::ToolResult PlanActiveTool::invoke(const std::string& tool_call_
     return tr;
   }
 
-  auto res = store_->active(*no);
+  auto res = store_->switch_to(*no);
   tr.ok = (res == "ok");
   tr.content = res;
   return tr;
