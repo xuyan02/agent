@@ -115,9 +115,11 @@ Quit 语义（v1）：
   - timerfd readable 时：读出到期计数（清空）后，批量执行所有 `now >= deadline` 的 delayed tasks，并重设 timerfd 到下一到期时间。
 - 使用 epoll 管理：wakeup eventfd + timerfd + watched fds。
 - I/O 事件映射（level-triggered）：
-  - Readable: EPOLLIN -> 触发所有 `on_readable`
-  - Writable: EPOLLOUT -> 触发所有 `on_writable`
-  - Error/Hangup: EPOLLERR/EPOLLHUP -> 触发所有 `on_error`
+  - Error/Hangup: EPOLLERR/EPOLLHUP -> 触发 `on_error`
+  - Readable: EPOLLIN -> 触发 `on_readable`
+  - Writable: EPOLLOUT -> 触发 `on_writable`
+
+触发顺序（同一 fd 同时就绪时）：`on_error` -> `on_readable` -> `on_writable`。
 
 ### 4.1 核心循环伪代码（Linux）
 1) `RunAllPendingTasks()`（无上限，按需求）
@@ -126,7 +128,15 @@ Quit 语义（v1）：
 4) 逐个处理 events：
    - 若 eventfd：`ReadAndClearEventFd()`，继续下一轮（因为可能有新任务/定时器）
    - 若 timerfd：`ReadAndClearTimerFd()`，执行 `RunDueDelayedTasks()`，继续下一轮
-   - 否则：查找 watch，按 EPOLLIN/EPOLLOUT 调用其回调
+   - 否则：
+     - 读取该 fd 当前 WatchCallbacks（注意：允许回调中立即 WatchFd/UnwatchFd 生效）
+     - 若 EPOLLERR/EPOLLHUP 且 on_error 非空：执行 on_error
+     - 若 EPOLLIN 且 on_readable 非空：执行 on_readable
+     - 若 EPOLLOUT 且 on_writable 非空：执行 on_writable
+
+回调重入/更新语义（v1）：
+- 允许在回调内对 **同一 fd** 调用 `WatchFd/UnwatchFd`，并且要求“立即生效”。
+- 建议实现方式：每次准备触发某个回调前，都从 `watches_by_fd[fd]` 重新读取最新配置；若已 Unwatch/为空则跳过后续触发。
 
 > 注意：由于 drain tasks 无上限，若持续有大量 post，I/O 回调可能被延后执行；这是 v1 的明确语义（后续可引入公平性策略）。
 
