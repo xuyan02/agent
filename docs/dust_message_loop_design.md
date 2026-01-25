@@ -31,7 +31,8 @@
 
 ### 1.1 关键对象
 - **MessageLoop**：面向使用者的“线程绑定 loop”，负责：创建/拥有 MessagePump、管理 MessageQueue、提供 Current()。
-- **MessagePump**：抽象不同平台的“阻塞等待与驱动逻辑”。
+  - 支持 re-run：`QuitWhenIdle()` 只退出本次 `Run()`，对象可再次 `Run()`。
+- **MessagePump**：抽象不同平台的“阻塞等待与驱动逻辑”（Chromium 风格：`Run(Delegate*)`）。
   - Linux 实现：epoll + eventfd + timerfd。
   - Android：不实现，但保留抽象入口（2A）。
 - **MessageQueue**：任务/延迟任务的存储与出队策略（线程安全）。
@@ -53,10 +54,15 @@
 - 当 MessageLoop 进入 shutdown 后，Post* 返回 false 丢弃任务。
 
 ### 1.4 MessageLoop（仅 loop 线程控制）
-- `void Run();`
+- `void Run();`  // 可重复调用（re-run）
 - `bool RunOnce(std::optional<Duration> max_wait);`
-- `void QuitWhenIdle();`  // 优雅退出：处理完已入队任务后退出 Run
+- `void QuitWhenIdle();`  // 优雅退出：处理完已入队任务后退出当前 Run
 - `scoped_refptr<TaskRunner> task_runner();`
+- `void WatchFd(int fd, WatchCallbacks callbacks);`
+- `void UnwatchFd(int fd);`
+
+re-run 语义（v1）：
+- `QuitWhenIdle()` 退出当前 Run 后，**保留** WatchFd 注册配置；下次 Run 继续监听。
 
 线程约束：
 - Run/RunOnce/WatchFd/UnwatchFd 只能在 loop 线程调用。
@@ -77,6 +83,7 @@ API 草案：
 - 回调为 Repeating：每次就绪都会触发对应回调。
 - 不允许三个回调均为空：`WatchFd(fd, empty)` 等价于 `UnwatchFd(fd)`。
 - 不自动处理 close：调用方必须在 close(fd) 之前 **在 loop 线程** 调用 `UnwatchFd(fd)`；回调内禁止直接 `close(fd)`。
+- MessageLoop/MessagePump 不负责 close 被 watch 的 fd（fd 生命周期由调用方管理）。
 - epoll 策略：level-triggered（默认 EPOLLIN/EPOLLOUT，不启用 EPOLLET）。
 
 ---
@@ -104,7 +111,30 @@ QuitWhenIdle 语义（v1）：
 
 ---
 
-## 3. 内部结构（跨平台一致抽象）
+## 3. MessagePump 抽象（跨平台驱动层）
+
+目标：隔离不同平台的等待/唤醒机制；MessagePump 不直接拥有任务队列，只通过 Delegate 回调驱动工作（Chromium 风格）。
+
+### 3.1 MessagePump 接口草案
+- `class MessagePump {`
+  - `class Delegate {`
+    - `virtual bool DoWork() = 0;`  // 执行 pending tasks；返回是否还有更多 work
+    - `virtual bool DoDelayedWork(TimeTicks* next_delayed_work_time) = 0;`
+    - `virtual bool DoIdleWork() = 0;`
+    - `};`
+  - `virtual void Run(Delegate* delegate) = 0;`
+  - `virtual void Quit() = 0;`
+  - `virtual void ScheduleWork() = 0;`  // 跨线程唤醒（eventfd）
+  - `virtual void ScheduleDelayedWork(TimeTicks next_time) = 0;`  // 驱动 timerfd
+  - `};`
+
+说明：
+- `MessageLoop` 作为 `Delegate` 的实现者，内部用 `MessageQueue` 支撑 DoWork/DoDelayedWork。
+- `ScheduleWork/ScheduleDelayedWork` 由 TaskRunner 在 post 时调用，用于唤醒阻塞的 Run。
+
+---
+
+## 4. 内部结构（跨平台一致抽象）
 
 ### 3.1 Wakeup 机制
 用于跨线程 post/stop/timer 变更时唤醒 loop。
