@@ -1,1 +1,0 @@
-// UI Librarynnexport const Button = ({ label, onClick }) => {n    return <button onClick={onClick}>{label}</button>;n};nnexport const Input = ({ placeholder, onChange }) => {n    return <input type='text' placeholder={placeholder} onChange={onChange} />;n};n
