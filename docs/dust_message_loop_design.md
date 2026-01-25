@@ -87,21 +87,30 @@
 
 ---
 
-## 4. Linux 后端（epoll + eventfd）
+## 4. Linux 后端（epoll + eventfd + timerfd）
+
+> 约束：Linux 实现优先采用 Chromium 风格代码与命名（CamelCase 类型、snake_case 方法/变量、DISALLOW_COPY_AND_ASSIGN 等习惯以项目约定为准）。
+
 - wakeup：使用 **eventfd**。
-- 使用 epoll 管理：wakeup eventfd + watched fds。
-- `epoll_wait`：
-  - v1：timeout 固定为 -1（无限等待），因为 post_delayed 暂不驱动 wakeup/timer。
-  - v2：根据最近 timer 计算 timeout，或引入 timerfd。
-- wakeup readable 时：
-  - 读取 eventfd 清空计数
-  - drain tasks（以及未来的 timers）
+- timers：使用 **timerfd**（`CLOCK_MONOTONIC`）。
+  - 设计：内部维护最小堆 timers；timerfd 只负责“最近到期时间点”的唤醒。
+  - timerfd readable 时：读出到期计数（清空）后，批量执行所有 `now >= deadline` 的 delayed tasks，并重设 timerfd 到下一到期时间。
+- 使用 epoll 管理：wakeup eventfd + timerfd + watched fds。
 - I/O 事件映射：
   - Readable: EPOLLIN
   - Writable: EPOLLOUT
   - Hangup/Error: EPOLLHUP/EPOLLERR
 
-> 注意：v1 由于 drain tasks 无上限，若有大量连续 post，I/O 回调可能被延后执行。
+### 4.1 核心循环伪代码（Linux）
+1) `RunAllPendingTasks()`（无上限，按需求）
+2) `RunDueDelayedTasks()`（批量执行到期项，重设 timerfd）
+3) `epoll_wait(epoll_fd, events, -1)`
+4) 逐个处理 events：
+   - 若 eventfd：`ReadAndClearEventFd()`，继续下一轮（因为可能有新任务/定时器）
+   - 若 timerfd：`ReadAndClearTimerFd()`，执行 `RunDueDelayedTasks()`，继续下一轮
+   - 否则：查找 watch，按 EPOLLIN/EPOLLOUT 调用其回调
+
+> 注意：由于 drain tasks 无上限，若持续有大量 post，I/O 回调可能被延后执行；这是 v1 的明确语义（后续可引入公平性策略）。
 
 ---
 
