@@ -4,6 +4,8 @@
 
 ## 0. 目标与约束
 
+> 讨论重点：优先落地 Linux（epoll + eventfd）实现；macOS/Windows 仅保留接口与设计方向，后续再补齐。
+
 ### 0.1 目标
 - 提供通用的 **MessageLoop**（dispatcher + timer + 可选 I/O watch）。
 - 支持主流平台：Linux / macOS / Windows。
@@ -33,14 +35,14 @@
 
 ### 1.2 MessageLoop
 - `void post(Task);`  // 线程安全
-- `TimerId post_delayed(Duration, Task);`  // 线程安全
-- `void cancel_timer(TimerId);`  // 线程安全（建议）
+- `TimerId post_delayed(Duration, Task);`  // 线程安全（v1 先提供 API；不实现或仅做最小实现）
+- `void cancel_timer(TimerId);`  // 线程安全（可选）
 - `void run();`  // 仅 loop 线程调用，阻塞直到 stop
 - `bool run_once(std::optional<Duration> max_wait);`  // 仅 loop 线程
 - `void stop();`  // 线程安全，唤醒 run
 
 ### 1.3 I/O Watch（仅 loop 线程调用）
-- `enum class IoEvent { Readable, Writable, Error, Hangup };`
+- `enum class IoEvent { Readable, Writable, Error, Hangup };`  // v1 需要支持 Readable/Writable
 - `using IoEventMask = uint32_t;`
 - `WatchId watch_io(IoHandle, IoEventMask, IoCallback);`
 - `void unwatch_io(WatchId);`
@@ -63,8 +65,8 @@
 
 ### 2.2 执行顺序与公平性
 每轮循环建议：
-1) drain tasks（可设每轮上限 N，避免饿死 I/O）
-2) 执行到期 timers
+1) drain tasks（v1：不设上限，按需求执行全部；注意可能饿死 I/O）
+2) 执行到期 timers（v1：post_delayed 先提供 API，暂不实现或仅做最小实现）
 3) wait（I/O 或 wakeup 或 timer 超时）
 4) 执行就绪 I/O callbacks
 
@@ -85,10 +87,21 @@
 
 ---
 
-## 4. Linux 后端（epoll）
-- 使用 epoll 管理：wakeup fd + watched fds
-- `epoll_wait` 的 timeout 来自最近 timer
-- wakeup readable 时 drain tasks/timers
+## 4. Linux 后端（epoll + eventfd）
+- wakeup：使用 **eventfd**。
+- 使用 epoll 管理：wakeup eventfd + watched fds。
+- `epoll_wait`：
+  - v1：timeout 固定为 -1（无限等待），因为 post_delayed 暂不驱动 wakeup/timer。
+  - v2：根据最近 timer 计算 timeout，或引入 timerfd。
+- wakeup readable 时：
+  - 读取 eventfd 清空计数
+  - drain tasks（以及未来的 timers）
+- I/O 事件映射：
+  - Readable: EPOLLIN
+  - Writable: EPOLLOUT
+  - Hangup/Error: EPOLLHUP/EPOLLERR
+
+> 注意：v1 由于 drain tasks 无上限，若有大量连续 post，I/O 回调可能被延后执行。
 
 ---
 
