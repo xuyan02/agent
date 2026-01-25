@@ -46,19 +46,20 @@
 
 ### 1.3 I/O Watch（仅 loop 线程调用；fd 作为 key）
 
-目标：不暴露 WatchId，允许同一 fd 反复注册多组回调；Unwatch 以 fd 为 key 清理全部。
+目标：不暴露 WatchId，以 fd 为 key 管理监听配置；允许重复 WatchFd 以“更新配置”。
 
 API 草案：
 - `struct WatchCallbacks {`
-  - `base::RepeatingClosure on_readable;`
-  - `base::RepeatingClosure on_writable;`
-  - `base::RepeatingClosure on_error;`  // EPOLLERR/EPOLLHUP 统一走这里（v1）
+  - `base::RepeatingClosure on_readable;`  // 可为空：为空表示不监听该事件
+  - `base::RepeatingClosure on_writable;`  // 可为空
+  - `base::RepeatingClosure on_error;`  // 可为空；EPOLLERR/EPOLLHUP 统一走这里（v1）
   - `};`
-- `void WatchFd(int fd, WatchCallbacks callbacks);`  // 允许重复调用：追加到 fd 的回调列表
-- `void UnwatchFd(int fd);`  // 移除该 fd 的全部回调并从 epoll 删除
+- `void WatchFd(int fd, WatchCallbacks callbacks);`  // 全量覆盖：替换该 fd 的回调集合/监听掩码
+- `void UnwatchFd(int fd);`  // 移除该 fd 的配置并从 epoll 删除
 
 语义约束（v1）：
 - 回调为 Repeating：每次就绪都会触发对应回调。
+- 回调为空表示“不监听”，因此 epoll mask 由 callbacks 是否为空决定（Readable/Writable/Error）。
 - 不自动处理 close：调用方必须在 close(fd) 之前 `UnwatchFd(fd)`。
 - epoll 策略：使用 level-triggered（默认 EPOLLIN/EPOLLOUT，不启用 EPOLLET）。
 
@@ -98,7 +99,7 @@ Quit 语义（v1）：
 ### 3.2 队列
 - `pending_tasks`：MPSC 队列（多生产者，loop 单消费）
 - `timers`：最小堆（到期时间 + TimerId + Task）
-- `watches_by_fd`：fd -> callbacks 列表（每个 fd 可注册多组 WatchCallbacks）
+- `watches_by_fd`：fd -> WatchCallbacks（每个 fd 一份配置；WatchFd 全量覆盖更新）
 
 ---
 
