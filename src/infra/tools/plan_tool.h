@@ -6,20 +6,20 @@
 #include <filesystem>
 #include <memory>
 
-namespace cpp_agent::infra::tools {
+namespace agent {
 
-class PlanTool final : public cpp_agent::interfaces::ITool {
+class PlanTool final : public agent::ITool {
 public:
-  explicit PlanTool(std::shared_ptr<cpp_agent::infra::plan::PlanStore> store);
+  explicit PlanTool(std::shared_ptr<agent::PlanStore> store);
 
-  std::string name() const override { return "plan"; }
+  std::string Name() const override { return "plan"; }
 
-  cpp_agent::core::ToolResult invoke(const std::string& tool_call_id,
+  agent::ToolResult Invoke(const std::string& tool_call_id,
                                      const std::string& arguments_json,
-                                     const cpp_agent::interfaces::ToolContext& ctx) override;
+                                     const agent::ToolContext& ctx) override;
 
 private:
-  std::shared_ptr<cpp_agent::infra::plan::PlanStore> store_;
+  std::shared_ptr<agent::PlanStore> store_;
 };
 
-} // namespace cpp_agent::infra::tools
+} // namespace agent

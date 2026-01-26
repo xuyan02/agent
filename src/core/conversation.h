@@ -4,7 +4,7 @@
 
 #include <vector>
 
-namespace cpp_agent::core {
+namespace agent {
 
 class Conversation final {
 public:
@@ -18,4 +18,4 @@ private:
   std::vector<Message> messages_;
 };
 
-} // namespace cpp_agent::core
+} // namespace agent

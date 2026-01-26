@@ -9,7 +9,7 @@
 #include <string.h>
 #include <unistd.h>
 
-namespace cpp_agent::infra::console {
+namespace agent {
 namespace {
 
 constexpr int kStdinFd = 0;
@@ -107,4 +107,4 @@ void CliConsole::OnStdinReadable() {
 
 }
 
-} // namespace cpp_agent::infra::console
+} // namespace agent

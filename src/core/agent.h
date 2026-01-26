@@ -14,17 +14,17 @@
 #include <memory>
 #include <unordered_map>
 
-namespace cpp_agent::core {
+namespace agent {
 
 class Agent final {
 public:
-  Agent(cpp_agent::infra::llm::LlmContext& llm,
-        interfaces::IConsole& console,
-        interfaces::IStorage& storage,
+  Agent(agent::LlmContext& llm,
+        agent::IConsole& console,
+        agent::IStorage& storage,
         Policy policy,
-        std::unordered_map<std::string, std::unique_ptr<interfaces::ITool>> tools,
-        interfaces::LlmOptions llm_options,
-        cpp_agent::infra::plan::PlanStore& plan_store,
+        std::unordered_map<std::string, std::unique_ptr<agent::ITool>> tools,
+        agent::LlmOptions llm_options,
+        agent::PlanStore& plan_store,
         std::string plan_prompt_md);
 
   void Repl(dust::MessageLoop& loop);
@@ -32,17 +32,17 @@ public:
 private:
   void handle_user_input(const std::string& input);
 
-  cpp_agent::infra::llm::LlmContext& llm_;
-  std::unique_ptr<cpp_agent::infra::llm::LlmRequest> active_req_;
-  interfaces::IConsole& console_;
-  interfaces::IStorage& storage_;
+  agent::LlmContext& llm_;
+  std::unique_ptr<agent::LlmRequest> active_req_;
+  agent::IConsole& console_;
+  agent::IStorage& storage_;
   Policy policy_;
-  std::unordered_map<std::string, std::unique_ptr<interfaces::ITool>> tools_;
-  interfaces::LlmOptions llm_options_;
-  cpp_agent::infra::plan::PlanStore& plan_store_;
+  std::unordered_map<std::string, std::unique_ptr<agent::ITool>> tools_;
+  agent::LlmOptions llm_options_;
+  agent::PlanStore& plan_store_;
   std::string plan_prompt_md_;
 
   Conversation conv_;
 };
 
-} // namespace cpp_agent::core
+} // namespace agent

@@ -6,7 +6,7 @@
 #include <cctype>
 #include <sstream>
 
-namespace cpp_agent::core {
+namespace agent {
 
 namespace {
 
@@ -122,4 +122,4 @@ std::string format_tool_log_line(const ToolCall& tc, const ToolResult& tr) {
   return oss.str();
 }
 
-} // namespace cpp_agent::core
+} // namespace agent

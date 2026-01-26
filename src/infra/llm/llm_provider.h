@@ -5,7 +5,7 @@
 #include <memory>
 #include <string>
 
-namespace cpp_agent::infra::llm {
+namespace agent {
 
 class LlmProvider {
 public:
@@ -15,7 +15,7 @@ public:
   LlmProvider& operator=(const LlmProvider&) = delete;
 
   // Provider name (e.g. "openai"). Not required to be unique.
-  virtual std::string name() const = 0;
+  virtual std::string Name() const = 0;
 
   // Whether this provider supports the given model name.
   virtual bool SupportsModel(const std::string& model_name) const = 0;
@@ -30,4 +30,4 @@ protected:
   LlmProvider() = default;
 };
 
-} // namespace cpp_agent::infra::llm
+} // namespace agent

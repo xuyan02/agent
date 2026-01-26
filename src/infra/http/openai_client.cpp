@@ -1,14 +1,12 @@
 #include "infra/http/openai_client.h"
 
-#include "core/status.h"
-
 #include <curl/curl.h>
 
 #include <iostream>
 #include <sstream>
 #include <string>
 
-namespace cpp_agent::infra::http {
+namespace agent {
 
 static size_t write_cb(char* ptr, size_t size, size_t nmemb, void* userdata) {
   auto* s = static_cast<std::string*>(userdata);
@@ -32,8 +30,8 @@ static std::string json_escape(const std::string& in) {
   return out;
 }
 
-static const char* role_to_string(cpp_agent::core::Role r) {
-  using cpp_agent::core::Role;
+static const char* role_to_string(agent::Role r) {
+  using agent::Role;
   switch (r) {
   case Role::kSystem: return "system";
   case Role::kUser: return "user";
@@ -43,8 +41,8 @@ static const char* role_to_string(cpp_agent::core::Role r) {
   return "user";
 }
 
-static std::string build_request_json(const std::vector<cpp_agent::core::Message>& messages,
-                                     const cpp_agent::interfaces::LlmOptions& options,
+static std::string build_request_json(const std::vector<agent::Message>& messages,
+                                     const agent::LlmOptions& options,
                                      const std::string& tools_json) {
   std::ostringstream oss;
   oss << "{\"model\":\"" << json_escape(options.model) << "\",\"temperature\":" << options.temperature
@@ -57,7 +55,7 @@ static std::string build_request_json(const std::vector<cpp_agent::core::Message
 
     oss << "{\"role\":\"" << role_to_string(m.role) << "\",";
 
-    if (m.role == cpp_agent::core::Role::kAssistant && !m.tool_calls.empty()) {
+    if (m.role == agent::Role::kAssistant && !m.tool_calls.empty()) {
       // OpenAI assistant tool-calling schema: {role:"assistant", tool_calls:[...], content:""}
       oss << "\"tool_calls\":[";
       bool first_tc = true;
@@ -70,7 +68,7 @@ static std::string build_request_json(const std::vector<cpp_agent::core::Message
       oss << "],";
     }
 
-    if (m.role == cpp_agent::core::Role::kTool && m.tool_result) {
+    if (m.role == agent::Role::kTool && m.tool_result) {
       // OpenAI tool message schema: {role:"tool", tool_call_id:"...", content:"..."}
       oss << "\"tool_call_id\":\"" << json_escape(m.tool_result->tool_call_id) << "\",";
     }
@@ -203,19 +201,18 @@ static std::string extract_raw_json_field_or_empty(const std::string& json,
   return json.substr(pos, end - pos);
 }
 
-static cpp_agent::core::Result<cpp_agent::interfaces::LlmResponse> extract_llm_response_r(const std::string& json) {
-  cpp_agent::interfaces::LlmResponse out;
-  out.assistant_message.role = cpp_agent::core::Role::kAssistant;
+static bool extract_llm_response(const std::string& json, agent::LlmResponse* out) {
+  *out = agent::LlmResponse{};
+  out->assistant_message.role = agent::Role::kAssistant;
 
   // Very small parser: locate first message object under choices[0].message.
   auto msg_pos = json.find("\"message\"");
   if (msg_pos == std::string::npos) {
-    return cpp_agent::core::Status::Error(cpp_agent::core::ErrorCode::kLlmError,
-                                         "LLM response missing message");
+    return false;
   }
 
   // content
-  out.assistant_message.content = extract_json_string_field_or_empty(json, "content", msg_pos);
+  out->assistant_message.content = extract_json_string_field_or_empty(json, "content", msg_pos);
 
   // tool_calls (OpenAI): choices[0].message.tool_calls
   auto tool_calls_raw = extract_raw_json_field_or_empty(json, "tool_calls", msg_pos);
@@ -234,7 +231,7 @@ static cpp_agent::core::Result<cpp_agent::interfaces::LlmResponse> extract_llm_r
       if (obj_end <= i || obj_end > tool_calls_raw.size()) break;
       std::string obj = tool_calls_raw.substr(i, obj_end - i);
 
-      cpp_agent::core::ToolCall tc;
+      agent::ToolCall tc;
       tc.id = extract_json_string_field_or_empty(obj, "id");
       // name is in function.name; arguments in function.arguments
       auto fn_raw = extract_raw_json_field_or_empty(obj, "function");
@@ -245,7 +242,7 @@ static cpp_agent::core::Result<cpp_agent::interfaces::LlmResponse> extract_llm_r
       }
 
       if (!tc.id.empty() && !tc.name.empty()) {
-        out.assistant_message.tool_calls.push_back(std::move(tc));
+        out->assistant_message.tool_calls.push_back(std::move(tc));
       }
 
       i = obj_end;
@@ -254,7 +251,7 @@ static cpp_agent::core::Result<cpp_agent::interfaces::LlmResponse> extract_llm_r
     }
   }
 
-  return out;
+  return true;
 }
 
 OpenAIClient::OpenAIClient(std::string base_url, std::string api_key)
@@ -266,9 +263,9 @@ void OpenAIClient::set_tools_json(std::string tools_json) {
   tools_json_ = std::move(tools_json);
 }
 
-cpp_agent::interfaces::LlmResponse OpenAIClient::complete(
-    const std::vector<cpp_agent::core::Message>& messages,
-    const cpp_agent::interfaces::LlmOptions& options) {
+agent::LlmResponse OpenAIClient::Complete(
+    const std::vector<agent::Message>& messages,
+    const agent::LlmOptions& options) {
   if (api_key_.empty()) {
     return {};
   }
@@ -329,9 +326,9 @@ cpp_agent::interfaces::LlmResponse OpenAIClient::complete(
     return {};
   }
 
-  auto parsed_r = extract_llm_response_r(response);
-  if (!parsed_r.ok()) return {};
-  return std::move(parsed_r.value());
+  agent::LlmResponse parsed;
+  if (!extract_llm_response(response, &parsed)) return {};
+  return parsed;
 }
 
-} // namespace cpp_agent::infra::http
+} // namespace agent

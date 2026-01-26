@@ -4,7 +4,7 @@
 #include <iostream>
 #include <string.h>
 
-namespace cpp_agent::infra::llm {
+namespace agent {
 namespace {
 
 bool DebugLlm() {
@@ -27,7 +27,7 @@ void LlmContext::RegisterFactory(std::unique_ptr<LlmProviderFactory> factory) {
 const LlmProviderFactory* LlmContext::FindProviderFactory(const std::string& provider_name) const {
   for (const auto& f : factories_) {
     if (!f) continue;
-    if (f->name() == provider_name) return f.get();
+    if (f->Name() == provider_name) return f.get();
   }
   return nullptr;
 }
@@ -45,7 +45,7 @@ std::unique_ptr<LlmRequest> LlmContext::Create(std::string model_name,
     if (!provider) continue;
     if (!provider->SupportsModel(model_name)) continue;
     if (DebugLlm()) {
-      std::cerr << "[cpp-agent.llm] selected provider name=" << provider->name() << std::endl;
+      std::cerr << "[cpp-agent.llm] selected provider name=" << provider->Name() << std::endl;
     }
     return provider->Create(std::move(model_name), std::move(prompt), std::move(on_token),
                             std::move(on_done));
@@ -62,4 +62,4 @@ void LlmContext::Clear() {
   factories_.clear();
 }
 
-} // namespace cpp_agent::infra::llm
+} // namespace agent

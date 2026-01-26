@@ -2,7 +2,7 @@
 
 #include <string>
 
-namespace cpp_agent::core {
+namespace agent {
 
 enum class ErrorCode {
   kInvalidArgument,
@@ -14,4 +14,4 @@ enum class ErrorCode {
   kInternal,
 };
 
-} // namespace cpp_agent::core
+} // namespace agent

@@ -13,6 +13,14 @@ add_library(cpp_agent_lib
   src/core/policy.cpp
   src/core/tool_log.cpp
   src/app/config.cpp
+  src/app/wiring.cpp
+
+  src/runtime/agent.cpp
+  src/runtime/general_agent.cpp
+  src/runtime/professional_agent.cpp
+  src/runtime/runtime.cpp
+  src/runtime/team.cpp
+
   src/infra/http/openai_client.cpp
   src/infra/http_async/async_client.cc
   src/infra/llm/llm_context.cpp
@@ -28,7 +36,6 @@ add_library(cpp_agent_lib
   src/infra/tools/shell_tool.cpp
   src/infra/storage/json_file_storage.cpp
   src/infra/console/cli_console.cpp
-  src/app/wiring.cpp
 )
 
 target_include_directories(cpp_agent_lib PUBLIC src)

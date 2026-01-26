@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace cpp_agent::core {
+namespace agent {
 
 enum class Role {
   kSystem,
@@ -36,4 +36,4 @@ struct Message {
   std::optional<ToolResult> tool_result;
 };
 
-} // namespace cpp_agent::core
+} // namespace agent

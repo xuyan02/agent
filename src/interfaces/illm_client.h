@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace cpp_agent::interfaces {
+namespace agent {
 
 struct LlmOptions {
   std::string model;
@@ -13,14 +13,14 @@ struct LlmOptions {
 };
 
 struct LlmResponse {
-  cpp_agent::core::Message assistant_message;
+  agent::Message assistant_message;
 };
 
 class ILlmClient {
 public:
   virtual ~ILlmClient() = default;
-  virtual LlmResponse complete(const std::vector<cpp_agent::core::Message>& messages,
+  virtual LlmResponse Complete(const std::vector<agent::Message>& messages,
                                const LlmOptions& options) = 0;
 };
 
-} // namespace cpp_agent::interfaces
+} // namespace agent

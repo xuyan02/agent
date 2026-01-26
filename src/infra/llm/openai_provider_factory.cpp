@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-namespace cpp_agent::infra::llm {
+namespace agent {
 
 std::unique_ptr<LlmProvider> OpenAIProviderFactory::CreateFromConfig(
     std::string provider_name,
@@ -16,8 +16,8 @@ std::unique_ptr<LlmProvider> OpenAIProviderFactory::CreateFromConfig(
     std::string params_json) const {
   std::string base_url_raw;
   std::string api_key_raw;
-  if (!json_min::extract_string_field(params_json, "base_url", &base_url_raw)) return nullptr;
-  if (!json_min::extract_string_field(params_json, "api_key", &api_key_raw)) return nullptr;
+  if (!extract_string_field(params_json, "base_url", &base_url_raw)) return nullptr;
+  if (!extract_string_field(params_json, "api_key", &api_key_raw)) return nullptr;
 
   auto base_url = ResolveEnvValue(std::move(base_url_raw));
   auto api_key = ResolveEnvValue(std::move(api_key_raw));
@@ -27,4 +27,4 @@ std::unique_ptr<LlmProvider> OpenAIProviderFactory::CreateFromConfig(
                                          std::move(base_url), std::move(api_key));
 }
 
-} // namespace cpp_agent::infra::llm
+} // namespace agent

@@ -10,7 +10,7 @@ int main() {
   std::error_code ec;
   std::filesystem::remove(tmp, ec);
 
-  auto store = std::make_shared<cpp_agent::infra::plan::PlanStore>(tmp);
+  auto store = std::make_shared<agent::PlanStore>(tmp);
   store->load();
 
   // Build root-only tasks:
@@ -20,16 +20,16 @@ int main() {
   // 4: t2
   // 5: t2.1
   store->add(std::nullopt, "g1", "t1", std::nullopt);
-  store->add(std::nullopt, "g1.1", "t1.1", *cpp_agent::infra::plan::parse_task_no("1"));
-  store->add(std::nullopt, "g1.2", "t1.2", *cpp_agent::infra::plan::parse_task_no("2"));
-  store->add(std::nullopt, "g2", "t2", *cpp_agent::infra::plan::parse_task_no("3"));
-  store->add(std::nullopt, "g2.1", "t2.1", *cpp_agent::infra::plan::parse_task_no("4"));
+  store->add(std::nullopt, "g1.1", "t1.1", *agent::parse_task_no("1"));
+  store->add(std::nullopt, "g1.2", "t1.2", *agent::parse_task_no("2"));
+  store->add(std::nullopt, "g2", "t2", *agent::parse_task_no("3"));
+  store->add(std::nullopt, "g2.1", "t2.1", *agent::parse_task_no("4"));
 
-  store->switch_to(*cpp_agent::infra::plan::parse_task_no("3"));
+  store->switch_to(*agent::parse_task_no("3"));
 
   // Complete active leaf 3 (t1.2): per rule B, prefer after siblings -> 4 (t2);
   // so the next active leaf should become t2.
-  store->complete(*cpp_agent::infra::plan::parse_task_no("3"));
+  store->complete(*agent::parse_task_no("3"));
 
   auto md = store->render_markdown();
   // Active leaf should now be the first incomplete leaf after completed leaf 3.

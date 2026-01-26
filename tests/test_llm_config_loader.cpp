@@ -11,7 +11,7 @@
 
 namespace {
 
-struct FakeRequest final : public cpp_agent::infra::llm::LlmRequest {
+struct FakeRequest final : public agent::LlmRequest {
   FakeRequest(std::vector<std::string>* events, std::string prompt)
       : events_(events), prompt_(std::move(prompt)) {
     events_->push_back("connect");
@@ -26,20 +26,20 @@ struct FakeRequest final : public cpp_agent::infra::llm::LlmRequest {
   std::string prompt_;
 };
 
-class FakeProvider final : public cpp_agent::infra::llm::LlmProvider {
+class FakeProvider final : public agent::LlmProvider {
 public:
   FakeProvider(std::string name, std::string model, std::vector<std::string>* events)
       : name_(std::move(name)), model_(std::move(model)), events_(events) {}
 
-  std::string name() const override { return name_; }
+  std::string Name() const override { return name_; }
 
   bool SupportsModel(const std::string& model_name) const override { return model_name == model_; }
 
-  std::unique_ptr<cpp_agent::infra::llm::LlmRequest> Create(
+  std::unique_ptr<agent::LlmRequest> Create(
       std::string model_name,
       std::string prompt,
-      cpp_agent::infra::llm::LlmRequest::OnToken /*on_token*/,
-      cpp_agent::infra::llm::LlmRequest::OnDone /*on_done*/) override {
+      agent::LlmRequest::OnToken /*on_token*/,
+      agent::LlmRequest::OnDone /*on_done*/) override {
     events_->push_back("provider_create:" + name_ + ":" + model_name);
     return std::make_unique<FakeRequest>(events_, std::move(prompt));
   }
@@ -50,13 +50,13 @@ private:
   std::vector<std::string>* events_;
 };
 
-class FakeProviderFactory final : public cpp_agent::infra::llm::LlmProviderFactory {
+class FakeProviderFactory final : public agent::LlmProviderFactory {
 public:
   explicit FakeProviderFactory(std::vector<std::string>* events) : events_(events) {}
 
-  std::string name() const override { return "fake"; }
+  std::string Name() const override { return "fake"; }
 
-  std::unique_ptr<cpp_agent::infra::llm::LlmProvider> CreateFromConfig(
+  std::unique_ptr<agent::LlmProvider> CreateFromConfig(
       std::string provider_name, std::vector<std::string> models, std::string /*params_json*/) const override {
     std::string joined;
     for (size_t i = 0; i < models.size(); i++) {
@@ -83,7 +83,7 @@ std::filesystem::path write_temp(const std::string& content) {
 } // namespace
 
 int main() {
-  using cpp_agent::infra::llm::LlmContext;
+  using agent::LlmContext;
 
   std::vector<std::string> events;
 
@@ -99,7 +99,7 @@ int main() {
 )JSON";
 
   const auto path = write_temp(json);
-  const bool ok = cpp_agent::infra::llm::RegisterProvidersFromConfig(ctx, path);
+  const bool ok = agent::RegisterProvidersFromConfig(ctx, path);
   assert(ok);
 
   {

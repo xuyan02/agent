@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace cpp_agent::infra::plan {
+namespace agent {
 
 struct Task {
   std::string goal;
@@ -46,4 +46,4 @@ void clear_active(Plan& plan);
 [[nodiscard]] TaskRef first_leaf(Task& root);
 [[nodiscard]] TaskRef last_leaf(Task& root);
 
-} // namespace cpp_agent::infra::plan
+} // namespace agent

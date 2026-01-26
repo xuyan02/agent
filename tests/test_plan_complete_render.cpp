@@ -9,14 +9,14 @@ int main() {
   std::error_code ec;
   std::filesystem::remove(tmp, ec);
 
-  auto store = std::make_shared<cpp_agent::infra::plan::PlanStore>(tmp);
+  auto store = std::make_shared<agent::PlanStore>(tmp);
   store->load();
 
   store->add(std::nullopt, "g1", "t1", std::nullopt);
   store->add(std::nullopt, "g2", "t2", std::nullopt);
 
   // Complete first root task.
-  store->complete(*cpp_agent::infra::plan::parse_task_no("1"));
+  store->complete(*agent::parse_task_no("1"));
 
   auto md = store->render_markdown();
   // Should render completion marker with previous no.

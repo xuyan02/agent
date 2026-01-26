@@ -5,7 +5,7 @@
 #include <fstream>
 #include <sstream>
 
-namespace cpp_agent::infra::tools {
+namespace agent {
 
 static std::string extract_json_string_or_empty(const std::string& json, const std::string& key) {
   auto pos = json.find('"' + key + '"');
@@ -31,10 +31,10 @@ static std::string extract_json_string_or_empty(const std::string& json, const s
   return out;
 }
 
-cpp_agent::core::ToolResult ReadFileTool::invoke(const std::string& tool_call_id,
+agent::ToolResult ReadFileTool::Invoke(const std::string& tool_call_id,
                                                 const std::string& arguments_json,
-                                                const cpp_agent::interfaces::ToolContext& ctx) {
-  cpp_agent::core::ToolResult tr;
+                                                const agent::ToolContext& ctx) {
+  agent::ToolResult tr;
   tr.tool_call_id = tool_call_id;
 
   auto path_str = extract_json_string_or_empty(arguments_json, "path");
@@ -64,10 +64,10 @@ cpp_agent::core::ToolResult ReadFileTool::invoke(const std::string& tool_call_id
   return tr;
 }
 
-cpp_agent::core::ToolResult WriteFileTool::invoke(const std::string& tool_call_id,
+agent::ToolResult WriteFileTool::Invoke(const std::string& tool_call_id,
                                                  const std::string& arguments_json,
-                                                 const cpp_agent::interfaces::ToolContext& ctx) {
-  cpp_agent::core::ToolResult tr;
+                                                 const agent::ToolContext& ctx) {
+  agent::ToolResult tr;
   tr.tool_call_id = tool_call_id;
 
   auto path_str = extract_json_string_or_empty(arguments_json, "path");
@@ -96,4 +96,4 @@ cpp_agent::core::ToolResult WriteFileTool::invoke(const std::string& tool_call_i
   return tr;
 }
 
-} // namespace cpp_agent::infra::tools
+} // namespace agent

@@ -4,7 +4,7 @@
 
 #include <filesystem>
 
-namespace cpp_agent::infra::llm {
+namespace agent {
 
 // Loads providers from a JSON config file and registers them into ctx.
 //
@@ -20,4 +20,4 @@ namespace cpp_agent::infra::llm {
 // }
 bool RegisterProvidersFromConfig(LlmContext& ctx, const std::filesystem::path& path);
 
-} // namespace cpp_agent::infra::llm
+} // namespace agent

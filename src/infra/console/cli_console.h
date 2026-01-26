@@ -6,9 +6,9 @@
 
 #include <string>
 
-namespace cpp_agent::infra::console {
+namespace agent {
 
-class CliConsole final : public cpp_agent::interfaces::IConsole {
+class CliConsole final : public agent::IConsole {
 public:
   void PrintLine(const std::string& s) override;
   void Print(const std::string& s) override;
@@ -25,4 +25,4 @@ private:
   std::string buffer_;
 };
 
-} // namespace cpp_agent::infra::console
+} // namespace agent

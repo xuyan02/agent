@@ -5,7 +5,7 @@
 #include <filesystem>
 #include <mutex>
 
-namespace cpp_agent::infra::plan {
+namespace agent {
 
 class PlanStore final {
 public:
@@ -53,4 +53,4 @@ private:
   std::vector<CompletedMarker> recently_completed_;
 };
 
-} // namespace cpp_agent::infra::plan
+} // namespace agent

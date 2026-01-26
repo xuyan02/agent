@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace cpp_agent::infra::llm {
+namespace agent {
 
 // Factory that can create a provider instance for a given provider name.
 //
@@ -22,7 +22,7 @@ public:
   LlmProviderFactory& operator=(const LlmProviderFactory&) = delete;
 
   // Provider name this factory handles (e.g. "openai").
-  virtual std::string name() const = 0;
+  virtual std::string Name() const = 0;
 
   // Creates a provider.
   // - provider_name: matches name().
@@ -36,4 +36,4 @@ protected:
   LlmProviderFactory() = default;
 };
 
-} // namespace cpp_agent::infra::llm
+} // namespace agent

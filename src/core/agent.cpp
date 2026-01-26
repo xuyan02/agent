@@ -6,15 +6,15 @@
 
 #include <sstream>
 
-namespace cpp_agent::core {
+namespace agent {
 
-Agent::Agent(cpp_agent::infra::llm::LlmContext& llm,
-             interfaces::IConsole& console,
-             interfaces::IStorage& storage,
+Agent::Agent(agent::LlmContext& llm,
+             agent::IConsole& console,
+             agent::IStorage& storage,
              Policy policy,
-             std::unordered_map<std::string, std::unique_ptr<interfaces::ITool>> tools,
-             interfaces::LlmOptions llm_options,
-             cpp_agent::infra::plan::PlanStore& plan_store,
+             std::unordered_map<std::string, std::unique_ptr<agent::ITool>> tools,
+             agent::LlmOptions llm_options,
+             agent::PlanStore& plan_store,
              std::string plan_prompt_md)
     : llm_(llm),
       console_(console),
@@ -70,14 +70,14 @@ void Agent::handle_user_input(const std::string& input) {
   user.content = input;
   conv_.add(user);
 
-  storage_.append_log_line(std::string("user: ") + input);
+  storage_.AppendLogLine(std::string("user: ") + input);
 
   // For now, streaming only supports a single assistant response without tool calls.
   bool done = false;
 
   auto on_token = [this](std::string tok) {
     console_.Print(tok);
-    storage_.append_log_line(std::string("assistant_token: ") + tok);
+    storage_.AppendLogLine(std::string("assistant_token: ") + tok);
   };
 
   auto on_done = [&]() {
@@ -94,4 +94,4 @@ void Agent::handle_user_input(const std::string& input) {
   }
 }
 
-} // namespace cpp_agent::core
+} // namespace agent

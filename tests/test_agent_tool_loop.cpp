@@ -16,7 +16,7 @@
 
 namespace {
 
-class FakeConsole final : public cpp_agent::interfaces::IConsole {
+class FakeConsole final : public agent::IConsole {
 public:
   void PrintLine(const std::string& line) override { last_line = line; }
   void Print(const std::string& s) override { stream += s; }
@@ -32,18 +32,18 @@ public:
   std::string stream;
 };
 
-class FakeLlm final : public cpp_agent::interfaces::ILlmClient {
+class FakeLlm final : public agent::ILlmClient {
 public:
-  cpp_agent::interfaces::LlmResponse complete(const std::vector<cpp_agent::core::Message>& messages,
-                                             const cpp_agent::interfaces::LlmOptions& /*options*/) override {
+  agent::LlmResponse Complete(const std::vector<agent::Message>& messages,
+                                             const agent::LlmOptions& /*options*/) override {
     calls++;
     last_messages = messages;
 
-    cpp_agent::interfaces::LlmResponse resp;
-    resp.assistant_message.role = cpp_agent::core::Role::kAssistant;
+    agent::LlmResponse resp;
+    resp.assistant_message.role = agent::Role::kAssistant;
 
     if (calls == 1) {
-      cpp_agent::core::ToolCall tc;
+      agent::ToolCall tc;
       tc.id = "call_test_1";
       tc.name = "plan.render";
       tc.arguments_json = "{}";
@@ -56,10 +56,10 @@ public:
     bool saw_assistant_with_tool_calls = false;
     bool saw_tool = false;
     for (const auto& m : messages) {
-      if (m.role == cpp_agent::core::Role::kAssistant && !m.tool_calls.empty()) {
+      if (m.role == agent::Role::kAssistant && !m.tool_calls.empty()) {
         saw_assistant_with_tool_calls = true;
       }
-      if (m.role == cpp_agent::core::Role::kTool && m.tool_result && m.tool_result->tool_call_id == "call_test_1") {
+      if (m.role == agent::Role::kTool && m.tool_result && m.tool_result->tool_call_id == "call_test_1") {
         saw_tool = true;
       }
     }
@@ -72,12 +72,12 @@ public:
   }
 
   int calls{0};
-  std::vector<cpp_agent::core::Message> last_messages;
+  std::vector<agent::Message> last_messages;
 };
 
-class NullStorage final : public cpp_agent::interfaces::IStorage {
+class NullStorage final : public agent::IStorage {
 public:
-  void append_log_line(const std::string& /*line*/) override {}
+  void AppendLogLine(const std::string& /*line*/) override {}
 };
 
 } // namespace
@@ -87,7 +87,7 @@ int main() {
   FakeConsole console;
   NullStorage storage;
 
-  cpp_agent::core::Policy policy(std::filesystem::current_path());
+  agent::Policy policy(std::filesystem::current_path());
 
   // Feed a repl command then one line of user input.
   // Provide an initial line when the agent sets the callback.
@@ -95,15 +95,15 @@ int main() {
   auto plan_path = std::filesystem::temp_directory_path() / "cpp-agent-test-plan.json";
   std::error_code ec;
   std::filesystem::remove(plan_path, ec);
-  auto store = std::make_shared<cpp_agent::infra::plan::PlanStore>(plan_path);
+  auto store = std::make_shared<agent::PlanStore>(plan_path);
   store->load();
 
-  std::unordered_map<std::string, std::unique_ptr<cpp_agent::interfaces::ITool>> tools;
+  std::unordered_map<std::string, std::unique_ptr<agent::ITool>> tools;
 
-  cpp_agent::interfaces::LlmOptions opt;
+  agent::LlmOptions opt;
   opt.model = "fake";
 
-  cpp_agent::core::Agent agent(llm, console, storage, std::move(policy), std::move(tools), opt, *store, "");
+  agent::Agent agent(llm, console, storage, std::move(policy), std::move(tools), opt, *store, "");
 
   // Drive via Repl() since handle_user_input is private.
   dust::MessageLoop loop(std::make_unique<dust::LinuxMessagePumpEpoll>());

@@ -5,24 +5,24 @@
 #include <filesystem>
 #include <string>
 
-namespace cpp_agent::infra::tools {
+namespace agent {
 
-class ReadFileTool final : public cpp_agent::interfaces::ITool {
+class ReadFileTool final : public agent::ITool {
 public:
-  std::string name() const override { return "read_file"; }
+  std::string Name() const override { return "read_file"; }
 
-  cpp_agent::core::ToolResult invoke(const std::string& tool_call_id,
+  agent::ToolResult Invoke(const std::string& tool_call_id,
                                      const std::string& arguments_json,
-                                     const cpp_agent::interfaces::ToolContext& ctx) override;
+                                     const agent::ToolContext& ctx) override;
 };
 
-class WriteFileTool final : public cpp_agent::interfaces::ITool {
+class WriteFileTool final : public agent::ITool {
 public:
-  std::string name() const override { return "write_file"; }
+  std::string Name() const override { return "write_file"; }
 
-  cpp_agent::core::ToolResult invoke(const std::string& tool_call_id,
+  agent::ToolResult Invoke(const std::string& tool_call_id,
                                      const std::string& arguments_json,
-                                     const cpp_agent::interfaces::ToolContext& ctx) override;
+                                     const agent::ToolContext& ctx) override;
 };
 
-} // namespace cpp_agent::infra::tools
+} // namespace agent

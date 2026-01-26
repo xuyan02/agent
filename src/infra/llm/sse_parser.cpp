@@ -2,7 +2,7 @@
 
 #include <utility>
 
-namespace cpp_agent::infra::llm {
+namespace agent {
 
 void SseParser::Feed(const char* data, size_t n) {
   buf_.append(data, n);
@@ -46,4 +46,4 @@ void SseParser::ConsumeLine(std::string line) {
   cur_data_ += payload;
 }
 
-} // namespace cpp_agent::infra::llm
+} // namespace agent

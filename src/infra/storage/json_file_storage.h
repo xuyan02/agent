@@ -4,17 +4,17 @@
 
 #include <filesystem>
 
-namespace cpp_agent::infra::storage {
+namespace agent {
 
-class JsonFileStorage final : public cpp_agent::interfaces::IStorage {
+class JsonFileStorage final : public agent::IStorage {
 public:
   explicit JsonFileStorage(std::filesystem::path storage_dir);
 
-  void append_log_line(const std::string& line) override;
+  void AppendLogLine(const std::string& line) override;
 
 private:
   std::filesystem::path storage_dir_;
   std::filesystem::path log_path_;
 };
 
-} // namespace cpp_agent::infra::storage
+} // namespace agent

@@ -1,11 +1,9 @@
 #include "infra/plan/plan_store.h"
 
-#include "core/status.h"
-
 #include <fstream>
 #include <sstream>
 
-namespace cpp_agent::infra::plan {
+namespace agent {
 
 namespace {
 
@@ -742,4 +740,4 @@ void PlanStore::persist_locked() {
   ofs << serialize_plan_json(plan_);
 }
 
-} // namespace cpp_agent::infra::plan
+} // namespace agent

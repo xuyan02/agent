@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-namespace cpp_agent::infra::llm {
+namespace agent {
 
 class SseParser {
 public:
@@ -22,4 +22,4 @@ private:
   std::string cur_data_;
 };
 
-} // namespace cpp_agent::infra::llm
+} // namespace agent

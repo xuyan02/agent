@@ -7,13 +7,13 @@
 #include "../src/infra/http/openai_client.cpp"
 
 int main() {
-  cpp_agent::interfaces::LlmOptions opt;
+  agent::LlmOptions opt;
   opt.model = "m";
   opt.temperature = 0.0;
 
-  std::vector<cpp_agent::core::Message> msgs;
-  cpp_agent::core::Message sys;
-  sys.role = cpp_agent::core::Role::kSystem;
+  std::vector<agent::Message> msgs;
+  agent::Message sys;
+  sys.role = agent::Role::kSystem;
   sys.content = "s";
   msgs.push_back(sys);
 

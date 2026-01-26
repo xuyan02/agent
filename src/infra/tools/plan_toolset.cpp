@@ -1,7 +1,5 @@
 #include "infra/tools/plan_toolset.h"
 
-#include "core/status.h"
-
 #include <cctype>
 #include <optional>
 #include <string>
@@ -112,13 +110,12 @@ static std::string extract_raw_field_or_empty(const std::string& json, const std
   return json.substr(pos, end - pos);
 }
 
-static cpp_agent::core::Result<cpp_agent::infra::plan::Task> parse_task_object(const std::string& obj_json) {
-  cpp_agent::infra::plan::Task t;
+static bool parse_task_object(const std::string& obj_json, agent::Task* out) {
+  agent::Task t;
   t.goal = extract_json_string_or_empty(obj_json, "goal");
   t.title = extract_json_string_or_empty(obj_json, "title");
   if (t.goal.empty() || t.title.empty()) {
-    return cpp_agent::core::Status::Error(cpp_agent::core::ErrorCode::kInvalidArgument,
-                                         "Task must have goal and title");
+    return false;
   }
 
   auto children_raw = extract_raw_field_or_empty(obj_json, "children");
@@ -135,31 +132,29 @@ static cpp_agent::core::Result<cpp_agent::infra::plan::Task> parse_task_object(c
       size_t obj_end = skip_object(children_raw, i);
       if (obj_end <= i || obj_end > children_raw.size()) break;
       std::string child_obj = children_raw.substr(i, obj_end - i);
-      auto child_r = parse_task_object(child_obj);
-      if (!child_r.ok()) return child_r.status();
-      t.children.push_back(std::move(child_r.value()));
+      agent::Task child;
+      if (!parse_task_object(child_obj, &child)) return false;
+      t.children.push_back(std::move(child));
       i = obj_end;
       i = skip_ws(children_raw, i);
       if (i < children_raw.size() && children_raw[i] == ',') i++;
     }
   }
 
-  return t;
+  *out = std::move(t);
+  return true;
 }
 
-static cpp_agent::core::Result<std::vector<cpp_agent::infra::plan::Task>> parse_new_children(
-    const std::string& arguments_json) {
+static bool parse_new_children(const std::string& arguments_json, std::vector<agent::Task>* out) {
   auto raw = extract_raw_field_or_empty(arguments_json, "new_children");
   if (raw.empty()) {
-    return cpp_agent::core::Status::Error(cpp_agent::core::ErrorCode::kInvalidArgument,
-                                         "Missing argument: new_children");
+    return false;
   }
   if (raw.front() != '[') {
-    return cpp_agent::core::Status::Error(cpp_agent::core::ErrorCode::kInvalidArgument,
-                                         "new_children must be an array");
+    return false;
   }
 
-  std::vector<cpp_agent::infra::plan::Task> out;
+  out->clear();
   size_t i = 0;
   i++; // [
   for (;;) {
@@ -172,39 +167,39 @@ static cpp_agent::core::Result<std::vector<cpp_agent::infra::plan::Task>> parse_
     size_t obj_end = skip_object(raw, i);
     if (obj_end <= i || obj_end > raw.size()) break;
     std::string obj = raw.substr(i, obj_end - i);
-    auto t_r = parse_task_object(obj);
-    if (!t_r.ok()) return t_r.status();
-    out.push_back(std::move(t_r.value()));
+    agent::Task t;
+    if (!parse_task_object(obj, &t)) return false;
+    out->push_back(std::move(t));
     i = obj_end;
     i = skip_ws(raw, i);
     if (i < raw.size() && raw[i] == ',') i++;
   }
 
-  return out;
+  return true;
 }
 
 } // namespace
 
-namespace cpp_agent::infra::tools {
+namespace agent {
 
-PlanRenderTool::PlanRenderTool(std::shared_ptr<cpp_agent::infra::plan::PlanStore> store) : store_(std::move(store)) {}
+PlanRenderTool::PlanRenderTool(std::shared_ptr<agent::PlanStore> store) : store_(std::move(store)) {}
 
-cpp_agent::core::ToolResult PlanRenderTool::invoke(const std::string& tool_call_id,
+agent::ToolResult PlanRenderTool::Invoke(const std::string& tool_call_id,
                                                   const std::string& /*arguments_json*/,
-                                                  const cpp_agent::interfaces::ToolContext& /*ctx*/) {
-  cpp_agent::core::ToolResult tr;
+                                                  const agent::ToolContext& /*ctx*/) {
+  agent::ToolResult tr;
   tr.tool_call_id = tool_call_id;
   tr.ok = true;
   tr.content = store_->render_markdown();
   return tr;
 }
 
-PlanAddTool::PlanAddTool(std::shared_ptr<cpp_agent::infra::plan::PlanStore> store) : store_(std::move(store)) {}
+PlanAddTool::PlanAddTool(std::shared_ptr<agent::PlanStore> store) : store_(std::move(store)) {}
 
-cpp_agent::core::ToolResult PlanAddTool::invoke(const std::string& tool_call_id,
+agent::ToolResult PlanAddTool::Invoke(const std::string& tool_call_id,
                                                const std::string& arguments_json,
-                                               const cpp_agent::interfaces::ToolContext& /*ctx*/) {
-  cpp_agent::core::ToolResult tr;
+                                               const agent::ToolContext& /*ctx*/) {
+  agent::ToolResult tr;
   tr.tool_call_id = tool_call_id;
 
   auto goal = extract_json_string_or_empty(arguments_json, "goal");
@@ -220,12 +215,12 @@ cpp_agent::core::ToolResult PlanAddTool::invoke(const std::string& tool_call_id,
     return tr;
   }
 
-  std::optional<cpp_agent::infra::plan::TaskNo> parent;
+  std::optional<agent::TaskNo> parent;
 
-  std::optional<cpp_agent::infra::plan::TaskNo> after;
+  std::optional<agent::TaskNo> after;
   auto after_no_str = extract_json_string_or_empty(arguments_json, "after_no");
   if (!after_no_str.empty()) {
-    after = cpp_agent::infra::plan::parse_task_no(after_no_str);
+    after = agent::parse_task_no(after_no_str);
     if (!after) {
       tr.ok = false;
       tr.content = "Invalid after_no";
@@ -239,16 +234,16 @@ cpp_agent::core::ToolResult PlanAddTool::invoke(const std::string& tool_call_id,
   return tr;
 }
 
-PlanSwitchTool::PlanSwitchTool(std::shared_ptr<cpp_agent::infra::plan::PlanStore> store) : store_(std::move(store)) {}
+PlanSwitchTool::PlanSwitchTool(std::shared_ptr<agent::PlanStore> store) : store_(std::move(store)) {}
 
-cpp_agent::core::ToolResult PlanSwitchTool::invoke(const std::string& tool_call_id,
+agent::ToolResult PlanSwitchTool::Invoke(const std::string& tool_call_id,
                                                   const std::string& arguments_json,
-                                                  const cpp_agent::interfaces::ToolContext& /*ctx*/) {
-  cpp_agent::core::ToolResult tr;
+                                                  const agent::ToolContext& /*ctx*/) {
+  agent::ToolResult tr;
   tr.tool_call_id = tool_call_id;
 
   auto no_str = extract_json_string_or_empty(arguments_json, "no");
-  auto no = cpp_agent::infra::plan::parse_task_no(no_str);
+  auto no = agent::parse_task_no(no_str);
   if (!no) {
     tr.ok = false;
     tr.content = "Invalid no";
@@ -261,16 +256,16 @@ cpp_agent::core::ToolResult PlanSwitchTool::invoke(const std::string& tool_call_
   return tr;
 }
 
-PlanCompleteTool::PlanCompleteTool(std::shared_ptr<cpp_agent::infra::plan::PlanStore> store) : store_(std::move(store)) {}
+PlanCompleteTool::PlanCompleteTool(std::shared_ptr<agent::PlanStore> store) : store_(std::move(store)) {}
 
-cpp_agent::core::ToolResult PlanCompleteTool::invoke(const std::string& tool_call_id,
+agent::ToolResult PlanCompleteTool::Invoke(const std::string& tool_call_id,
                                                     const std::string& arguments_json,
-                                                    const cpp_agent::interfaces::ToolContext& /*ctx*/) {
-  cpp_agent::core::ToolResult tr;
+                                                    const agent::ToolContext& /*ctx*/) {
+  agent::ToolResult tr;
   tr.tool_call_id = tool_call_id;
 
   auto no_str = extract_json_string_or_empty(arguments_json, "no");
-  auto no = cpp_agent::infra::plan::parse_task_no(no_str);
+  auto no = agent::parse_task_no(no_str);
   if (!no) {
     tr.ok = false;
     tr.content = "Invalid no";
@@ -283,16 +278,16 @@ cpp_agent::core::ToolResult PlanCompleteTool::invoke(const std::string& tool_cal
   return tr;
 }
 
-PlanReplanTool::PlanReplanTool(std::shared_ptr<cpp_agent::infra::plan::PlanStore> store) : store_(std::move(store)) {}
+PlanReplanTool::PlanReplanTool(std::shared_ptr<agent::PlanStore> store) : store_(std::move(store)) {}
 
-cpp_agent::core::ToolResult PlanReplanTool::invoke(const std::string& tool_call_id,
+agent::ToolResult PlanReplanTool::Invoke(const std::string& tool_call_id,
                                                   const std::string& arguments_json,
-                                                  const cpp_agent::interfaces::ToolContext& /*ctx*/) {
-  cpp_agent::core::ToolResult tr;
+                                                  const agent::ToolContext& /*ctx*/) {
+  agent::ToolResult tr;
   tr.tool_call_id = tool_call_id;
 
   auto no_str = extract_json_string_or_empty(arguments_json, "no");
-  auto no = cpp_agent::infra::plan::parse_task_no(no_str);
+  auto no = agent::parse_task_no(no_str);
   if (!no) {
     tr.ok = false;
     tr.content = "Invalid no";
@@ -306,13 +301,12 @@ cpp_agent::core::ToolResult PlanReplanTool::invoke(const std::string& tool_call_
     return tr;
   }
 
-  auto new_children_r = parse_new_children(arguments_json);
-  if (!new_children_r.ok()) {
+  std::vector<agent::Task> new_children;
+  if (!parse_new_children(arguments_json, &new_children)) {
     tr.ok = false;
-    tr.content = new_children_r.status().message;
+    tr.content = "Invalid new_children";
     return tr;
   }
-  auto new_children = std::move(new_children_r.value());
 
   auto res = store_->replan(*no, std::move(new_children), history_line);
   tr.ok = (res == "ok");
@@ -320,4 +314,4 @@ cpp_agent::core::ToolResult PlanReplanTool::invoke(const std::string& tool_call_
   return tr;
 }
 
-} // namespace cpp_agent::infra::tools
+} // namespace agent

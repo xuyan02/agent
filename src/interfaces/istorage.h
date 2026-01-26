@@ -2,12 +2,12 @@
 
 #include <string>
 
-namespace cpp_agent::interfaces {
+namespace agent {
 
 class IStorage {
 public:
   virtual ~IStorage() = default;
-  virtual void append_log_line(const std::string& line) = 0;
+  virtual void AppendLogLine(const std::string& line) = 0;
 };
 
-} // namespace cpp_agent::interfaces
+} // namespace agent

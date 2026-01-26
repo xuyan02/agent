@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-namespace cpp_agent::infra::llm {
+namespace agent {
 
 class OpenAIRequest final : public LlmRequest {
 public:
@@ -45,7 +45,7 @@ public:
                  std::string base_url,
                  std::string api_key);
 
-  std::string name() const override { return name_; }
+  std::string Name() const override { return name_; }
   bool SupportsModel(const std::string& model_name) const override;
   std::unique_ptr<LlmRequest> Create(std::string model_name,
                                     std::string prompt,
@@ -59,4 +59,4 @@ private:
   std::string api_key_;
 };
 
-} // namespace cpp_agent::infra::llm
+} // namespace agent

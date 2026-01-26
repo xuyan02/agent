@@ -2,18 +2,22 @@
 
 #include "app/config.h"
 
-#include "core/status.h"
+#include "infra/llm/llm_context.h"
 #include "interfaces/iconsole.h"
 
+#include <functional>
 #include <memory>
 
-namespace cpp_agent::core {
+namespace agent {
 class Agent;
 }
 
-namespace cpp_agent::app {
+namespace agent {
 
-cpp_agent::core::Result<std::unique_ptr<cpp_agent::core::Agent>> build_agent(const AppConfig& cfg,
-                                                                             cpp_agent::interfaces::IConsole& console);
+// Legacy single-agent wiring (will be removed once Runtime/Team is fully integrated).
+std::unique_ptr<agent::Agent> build_agent(const AppConfig& cfg, agent::IConsole& console);
 
-} // namespace cpp_agent::app
+// Builds and initializes the shared LLM context.
+agent::LlmContext* build_llm(const AppConfig& cfg);
+
+} // namespace agent

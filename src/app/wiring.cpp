@@ -15,34 +15,40 @@
 #include <sstream>
 #include <unordered_map>
 
-namespace cpp_agent::app {
+namespace agent {
 
-cpp_agent::core::Result<std::unique_ptr<cpp_agent::core::Agent>> build_agent(
-    const AppConfig& cfg, cpp_agent::interfaces::IConsole& console) {
-  static cpp_agent::infra::storage::JsonFileStorage storage(cfg.storage_dir);
-  // LLM providers (streaming via infra/llm).
-  static cpp_agent::infra::llm::LlmContext llm;
+agent::LlmContext* build_llm(const AppConfig& cfg) {
+  static agent::LlmContext llm;
   static bool llm_inited = false;
   if (!llm_inited) {
     llm_inited = true;
-    llm.RegisterFactory(std::make_unique<cpp_agent::infra::llm::OpenAIProviderFactory>());
-    (void)cpp_agent::infra::llm::RegisterProvidersFromConfig(llm, cfg.llm.providers_json_path);
+    llm.RegisterFactory(std::make_unique<agent::OpenAIProviderFactory>());
+    (void)agent::RegisterProvidersFromConfig(llm, cfg.llm.providers_json_path);
   }
+  return &llm;
+}
 
-  cpp_agent::core::Policy policy(cfg.project_root);
+std::unique_ptr<agent::Agent> build_agent(
+    const AppConfig& cfg, agent::IConsole& console) {
+  static agent::JsonFileStorage storage(cfg.storage_dir);
+
+  auto* llm = build_llm(cfg);
+  if (!llm) return nullptr;
+
+  agent::Policy policy(cfg.project_root);
 
   auto plan_path = cfg.storage_dir / "plan.json";
-  auto plan_store = std::make_shared<cpp_agent::infra::plan::PlanStore>(plan_path);
+  auto plan_store = std::make_shared<agent::PlanStore>(plan_path);
   plan_store->load();
 
-  std::unordered_map<std::string, std::unique_ptr<cpp_agent::interfaces::ITool>> tools;
+  std::unordered_map<std::string, std::unique_ptr<agent::ITool>> tools;
   // Tool calling is disabled in streaming mode (for now).
 
   if (cfg.shell.enabled) {
     // no-op
   }
 
-  cpp_agent::interfaces::LlmOptions opt;
+  agent::LlmOptions opt;
   opt.model = cfg.llm.model;
 
   auto plan_prompt_path = cfg.project_root / cfg.plan_prompt_path;
@@ -56,7 +62,7 @@ cpp_agent::core::Result<std::unique_ptr<cpp_agent::core::Agent>> build_agent(
     }
   }
 
-  return std::make_unique<cpp_agent::core::Agent>(llm,
+  return std::make_unique<agent::Agent>(*llm,
                                                   console,
                                                   storage,
                                                   std::move(policy),
@@ -66,4 +72,4 @@ cpp_agent::core::Result<std::unique_ptr<cpp_agent::core::Agent>> build_agent(
                                                   plan_prompt_md);
 }
 
-} // namespace cpp_agent::app
+} // namespace agent

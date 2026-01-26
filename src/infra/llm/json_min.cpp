@@ -1,6 +1,6 @@
 #include "infra/llm/json_min.h"
 
-namespace cpp_agent::infra::llm::json_min {
+namespace agent {
 namespace {
 
 size_t skip_ws(const std::string& s, size_t i) {
@@ -180,4 +180,4 @@ bool parse_string_array(const std::string& arr, std::vector<std::string>* out) {
   return true;
 }
 
-} // namespace cpp_agent::infra::llm::json_min
+} // namespace agent

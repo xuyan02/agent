@@ -2,15 +2,15 @@
 
 #include "interfaces/itool.h"
 
-namespace cpp_agent::infra::tools {
+namespace agent {
 
-class EchoTool final : public cpp_agent::interfaces::ITool {
+class EchoTool final : public agent::ITool {
 public:
-  std::string name() const override { return "echo"; }
+  std::string Name() const override { return "echo"; }
 
-  cpp_agent::core::ToolResult invoke(const std::string& tool_call_id,
+  agent::ToolResult Invoke(const std::string& tool_call_id,
                                      const std::string& arguments_json,
-                                     const cpp_agent::interfaces::ToolContext& ctx) override;
+                                     const agent::ToolContext& ctx) override;
 };
 
-} // namespace cpp_agent::infra::tools
+} // namespace agent

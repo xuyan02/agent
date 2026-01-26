@@ -32,7 +32,7 @@ int main() {
   const fs::path old = fs::current_path();
   fs::current_path(tmp);
 
-  auto cfg_r = cpp_agent::app::load_config(cfg_path);
+  auto cfg_r = agent::load_config(cfg_path);
   assert(cfg_r.ok());
   assert(cfg_r.value().llm.providers_json_path == "/tmp/cpp-agent-llm.json");
   assert(cfg_r.value().llm.model == "test-model");
@@ -53,7 +53,7 @@ int main() {
                "  \"storage_dir\": \"~/store\"\n"
                "}\n");
 
-    auto cfg2_r = cpp_agent::app::load_config("~/cpp-agent-test-config-path/settings.json");
+    auto cfg2_r = agent::load_config("~/cpp-agent-test-config-path/settings.json");
     assert(cfg2_r.ok());
     assert(cfg2_r.value().llm.providers_json_path == fs::path(home) / "llm.json");
     assert(cfg2_r.value().project_root == fs::path(home) / "proj");

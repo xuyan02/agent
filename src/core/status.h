@@ -6,7 +6,7 @@
 #include <string>
 #include <utility>
 
-namespace cpp_agent::core {
+namespace agent {
 
 struct Status {
   ErrorCode code = ErrorCode::kInternal;
@@ -36,4 +36,4 @@ private:
   Status status_;
 };
 
-} // namespace cpp_agent::core
+} // namespace agent

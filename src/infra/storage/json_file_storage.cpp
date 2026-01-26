@@ -1,11 +1,9 @@
 #include "infra/storage/json_file_storage.h"
 
-#include "core/status.h"
-
 #include <chrono>
 #include <fstream>
 
-namespace cpp_agent::infra::storage {
+namespace agent {
 
 static std::filesystem::path expand_home(std::filesystem::path p) {
   auto s = p.string();
@@ -27,10 +25,10 @@ JsonFileStorage::JsonFileStorage(std::filesystem::path storage_dir)
   log_path_ = storage_dir_ / "logs.txt";
 }
 
-void JsonFileStorage::append_log_line(const std::string& line) {
+void JsonFileStorage::AppendLogLine(const std::string& line) {
   std::ofstream ofs(log_path_, std::ios::app);
   if (!ofs) return;
   ofs << line << "\n";
 }
 
-} // namespace cpp_agent::infra::storage
+} // namespace agent

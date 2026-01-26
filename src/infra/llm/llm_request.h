@@ -5,7 +5,7 @@
 
 #include <string>
 
-namespace cpp_agent::infra::llm {
+namespace agent {
 
 // Represents a single in-flight LLM request.
 //
@@ -27,4 +27,4 @@ protected:
   LlmRequest() = default;
 };
 
-} // namespace cpp_agent::infra::llm
+} // namespace agent

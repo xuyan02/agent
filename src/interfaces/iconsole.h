@@ -4,7 +4,7 @@
 
 #include <string>
 
-namespace cpp_agent::interfaces {
+namespace agent {
 
 class IConsole {
 public:
@@ -18,4 +18,4 @@ public:
   virtual void SetOnLine(dust::Function<void(std::string)> on_line) = 0;
 };
 
-} // namespace cpp_agent::interfaces
+} // namespace agent

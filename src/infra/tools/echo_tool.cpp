@@ -35,12 +35,12 @@ static std::string extract_json_string_or_empty(const std::string& json, const s
 
 } // namespace
 
-namespace cpp_agent::infra::tools {
+namespace agent {
 
-cpp_agent::core::ToolResult EchoTool::invoke(const std::string& tool_call_id,
+agent::ToolResult EchoTool::Invoke(const std::string& tool_call_id,
                                             const std::string& arguments_json,
-                                            const cpp_agent::interfaces::ToolContext& /*ctx*/) {
-  cpp_agent::core::ToolResult tr;
+                                            const agent::ToolContext& /*ctx*/) {
+  agent::ToolResult tr;
   tr.tool_call_id = tool_call_id;
 
   auto msg = extract_json_string_or_empty(arguments_json, "message");
@@ -55,4 +55,4 @@ cpp_agent::core::ToolResult EchoTool::invoke(const std::string& tool_call_id,
   return tr;
 }
 
-} // namespace cpp_agent::infra::tools
+} // namespace agent

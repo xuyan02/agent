@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace cpp_agent::infra::llm {
+namespace agent {
 
 class LlmContext {
 public:
@@ -38,4 +38,4 @@ private:
   std::vector<std::unique_ptr<LlmProviderFactory>> factories_;
 };
 
-} // namespace cpp_agent::infra::llm
+} // namespace agent

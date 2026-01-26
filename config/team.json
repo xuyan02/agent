@@ -1,0 +1,6 @@
+{
+  "leader": "leader",
+  "agents": [
+    {"name": "leader"}
+  ]
+}

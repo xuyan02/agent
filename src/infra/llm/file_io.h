@@ -5,7 +5,7 @@
 #include <sstream>
 #include <string>
 
-namespace cpp_agent::infra::llm {
+namespace agent {
 
 inline bool ReadAll(const std::filesystem::path& path, std::string* out) {
   if (!out) return false;
@@ -17,4 +17,4 @@ inline bool ReadAll(const std::filesystem::path& path, std::string* out) {
   return true;
 }
 
-} // namespace cpp_agent::infra::llm
+} // namespace agent

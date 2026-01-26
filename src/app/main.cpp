@@ -4,8 +4,9 @@
 #include "dust/message_loop/linux_message_pump_epoll.h"
 #include "dust/message_loop/message_loop.h"
 
-#include "core/agent.h"
 #include "infra/console/cli_console.h"
+#include "runtime/runtime.h"
+#include "runtime/team.h"
 
 #include <iostream>
 
@@ -14,29 +15,49 @@ int main(int argc, char** argv) {
   std::string config_path = "~/.cpp-agent/settings.json";
   if (argc >= 2) config_path = argv[1];
 
-  auto cfg_r = cpp_agent::app::load_config(config_path);
+  auto* cfg = agent::load_config(config_path);
 
   // Single-threaded event loop.
   dust::MessageLoop loop(std::make_unique<dust::LinuxMessagePumpEpoll>());
 
   // CLI console stdin watcher.
-  cpp_agent::infra::console::CliConsole console;
+  agent::CliConsole console;
   console.AttachToMessageLoop(loop);
 
-  if (!cfg_r.ok()) {
-    std::cerr << "config error: " << cfg_r.status().message << "\n";
+  if (!cfg) {
+    std::cerr << "config error\n";
     return 2;
   }
 
-  auto agent_r = cpp_agent::app::build_agent(cfg_r.value(), console);
-  if (!agent_r.ok()) {
-    std::cerr << "agent init error: " << agent_r.status().message << "\n";
+  // Build LLM context and register providers.
+  auto* llm = agent::build_llm(*cfg);
+  if (!llm) {
+    std::cerr << "llm init error\n";
     return 3;
   }
 
-  // Ensure Agent outlives the message loop callbacks it registers.
-  auto agent = std::move(agent_r.value());
-  agent->Repl(loop);
+  agent::Runtime runtime(console);
+
+  // Prototype: load team from repo config.
+  auto team = agent::Team::Load(runtime,
+                                *llm,
+                                (cfg->project_root / "config" / "team.json").string(),
+                                cfg->llm.model);
+  if (!team) {
+    std::cerr << "team init error\n";
+    return 4;
+  }
+
+  runtime.SetTeam(std::move(team));
+
+  console.PrintLine("cpp-agent (type /exit to quit)");
+  console.SetOnLine([&](std::string line) {
+    if (line == "/exit") {
+      loop.Quit();
+      return;
+    }
+    runtime.OnCliLine(line);
+  });
 
   loop.Run();
   return 0;

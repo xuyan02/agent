@@ -4,7 +4,7 @@
 #include <optional>
 #include <string>
 
-namespace cpp_agent::core {
+namespace agent {
 
 struct PolicyDecision {
   bool allowed{false};
@@ -27,4 +27,4 @@ private:
   std::filesystem::path project_root_;
 };
 
-} // namespace cpp_agent::core
+} // namespace agent

@@ -1,11 +1,9 @@
 #pragma once
 
-#include "core/status.h"
-
 #include <filesystem>
 #include <string>
 
-namespace cpp_agent::app {
+namespace agent {
 
 struct OpenAIConfig {
   std::string base_url;
@@ -36,6 +34,6 @@ struct AppConfig {
   DebugConfig debug;
 };
 
-cpp_agent::core::Result<AppConfig> load_config(const std::filesystem::path& path);
+AppConfig* load_config(const std::filesystem::path& path);
 
-} // namespace cpp_agent::app
+} // namespace agent

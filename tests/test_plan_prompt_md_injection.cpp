@@ -10,7 +10,7 @@
 
 namespace {
 
-class OneShotConsole final : public cpp_agent::interfaces::IConsole {
+class OneShotConsole final : public agent::IConsole {
 public:
   void print_line(const std::string& /*line*/) override {}
   std::optional<std::string> read_line(const std::string& /*prompt*/) override {
@@ -25,22 +25,22 @@ private:
   bool sent_{false};
 };
 
-class NullStorage final : public cpp_agent::interfaces::IStorage {
+class NullStorage final : public agent::IStorage {
 public:
-  void append_log_line(const std::string& /*line*/) override {}
+  void AppendLogLine(const std::string& /*line*/) override {}
 };
 
-class CapturingLlm final : public cpp_agent::interfaces::ILlmClient {
+class CapturingLlm final : public agent::ILlmClient {
 public:
-  cpp_agent::interfaces::LlmResponse complete(const std::vector<cpp_agent::core::Message>& messages,
-                                             const cpp_agent::interfaces::LlmOptions& /*options*/) override {
+  agent::LlmResponse Complete(const std::vector<agent::Message>& messages,
+                                             const agent::LlmOptions& /*options*/) override {
     for (const auto& m : messages) {
-      if (m.role == cpp_agent::core::Role::kSystem) {
+      if (m.role == agent::Role::kSystem) {
         last_system = m.content;
       }
     }
-    cpp_agent::interfaces::LlmResponse resp;
-    resp.assistant_message.role = cpp_agent::core::Role::kAssistant;
+    agent::LlmResponse resp;
+    resp.assistant_message.role = agent::Role::kAssistant;
     resp.assistant_message.content = "done";
     return resp;
   }
@@ -55,21 +55,21 @@ int main() {
   OneShotConsole console;
   NullStorage storage;
 
-  cpp_agent::core::Policy policy(std::filesystem::current_path());
+  agent::Policy policy(std::filesystem::current_path());
 
   auto plan_path = std::filesystem::temp_directory_path() / "cpp-agent-test-plan-prompt-md.json";
   std::error_code ec;
   std::filesystem::remove(plan_path, ec);
-  auto store = std::make_shared<cpp_agent::infra::plan::PlanStore>(plan_path);
+  auto store = std::make_shared<agent::PlanStore>(plan_path);
   store->load();
 
-  std::unordered_map<std::string, std::unique_ptr<cpp_agent::interfaces::ITool>> tools;
+  std::unordered_map<std::string, std::unique_ptr<agent::ITool>> tools;
 
-  cpp_agent::interfaces::LlmOptions opt;
+  agent::LlmOptions opt;
   opt.model = "fake";
 
   std::string md = "# Plan rules\nAlways update plan.\n";
-  cpp_agent::core::Agent agent(llm, console, storage, std::move(policy), std::move(tools), opt, *store, md);
+  agent::Agent agent(llm, console, storage, std::move(policy), std::move(tools), opt, *store, md);
   agent.repl();
 
   assert(llm.last_system.find("# Plan rules") != std::string::npos);

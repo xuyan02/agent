@@ -2,7 +2,7 @@
 
 #include <cctype>
 
-namespace cpp_agent::infra::plan {
+namespace agent {
 
 std::optional<TaskNo> parse_task_no(const std::string& no) {
   TaskNo out;
@@ -183,4 +183,4 @@ TaskRef find_active_leaf(Plan& plan) {
   return {};
 }
 
-} // namespace cpp_agent::infra::plan
+} // namespace agent

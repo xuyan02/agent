@@ -9,7 +9,7 @@
 #include <string.h>
 #include <utility>
 
-namespace cpp_agent::infra::llm {
+namespace agent {
 namespace {
 
 bool DebugLlm() {
@@ -128,4 +128,4 @@ std::unique_ptr<LlmRequest> OpenAIProvider::Create(std::string model_name,
                                         std::move(on_token), std::move(on_done));
 }
 
-} // namespace cpp_agent::infra::llm
+} // namespace agent

@@ -1,22 +1,18 @@
 #include "app/config.h"
 
-#include "core/status.h"
-
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
 
-namespace cpp_agent::app {
+namespace agent {
 
-static cpp_agent::core::Result<std::string> read_all(const std::filesystem::path& path) {
+static bool ReadAll(const std::filesystem::path& path, std::string* out) {
   std::ifstream ifs(path);
-  if (!ifs) {
-    return cpp_agent::core::Status::Error(cpp_agent::core::ErrorCode::kIo,
-                                         "Failed to open config: " + path.string());
-  }
+  if (!ifs) return false;
   std::ostringstream oss;
   oss << ifs.rdbuf();
-  return oss.str();
+  *out = oss.str();
+  return true;
 }
 
 static std::string trim(std::string s) {
@@ -28,38 +24,31 @@ static std::string trim(std::string s) {
 
 // Minimal JSON extraction without adding a JSON dependency.
 // This expects the example format and is intentionally strict.
-static cpp_agent::core::Result<std::string> extract_json_string(const std::string& json,
-                                                            const std::string& key) {
+static bool ExtractJsonString(const std::string& json, const std::string& key, std::string* out) {
   auto pos = json.find('"' + key + '"');
-  if (pos == std::string::npos) {
-    return cpp_agent::core::Status::Error(cpp_agent::core::ErrorCode::kInvalidArgument,
-                                         "Config missing key: " + key);
-  }
+  if (pos == std::string::npos) return false;
+
   pos = json.find(':', pos);
-  if (pos == std::string::npos) {
-    return cpp_agent::core::Status::Error(cpp_agent::core::ErrorCode::kInvalidArgument,
-                                         "Config parse error near key: " + key);
-  }
+  if (pos == std::string::npos) return false;
+
   pos++;
   while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\n' || json[pos] == '\r' || json[pos] == '\t')) pos++;
-  if (pos >= json.size() || json[pos] != '"') {
-    return cpp_agent::core::Status::Error(cpp_agent::core::ErrorCode::kInvalidArgument,
-                                         "Config key not a string: " + key);
-  }
+  if (pos >= json.size() || json[pos] != '"') return false;
+
   pos++;
-  std::string out;
+  out->clear();
   for (; pos < json.size(); ++pos) {
     char c = json[pos];
     if (c == '\\') {
       if (pos + 1 >= json.size()) break;
-      out.push_back(json[pos + 1]);
+      out->push_back(json[pos + 1]);
       pos++;
       continue;
     }
-    if (c == '"') break;
-    out.push_back(c);
+    if (c == '"') return true;
+    out->push_back(c);
   }
-  return out;
+  return false;
 }
 
 static std::string extract_json_string_or_default(const std::string& json,
@@ -67,8 +56,9 @@ static std::string extract_json_string_or_default(const std::string& json,
                                                   const std::string& def) {
   auto pos = json.find('"' + key + '"');
   if (pos == std::string::npos) return def;
-  auto r = extract_json_string(json, key);
-  return r.ok() ? r.value() : def;
+  std::string out;
+  if (!ExtractJsonString(json, key, &out)) return def;
+  return out;
 }
 
 static bool extract_json_bool_or_default(const std::string& json, const std::string& key, bool def) {
@@ -137,26 +127,26 @@ static std::filesystem::path expand_user_home(std::filesystem::path p) {
   return p;
 }
 
-cpp_agent::core::Result<AppConfig> load_config(const std::filesystem::path& path) {
-  auto json_r = read_all(expand_user_home(path));
-  if (!json_r.ok()) return json_r.status();
-  const auto& json = json_r.value();
+AppConfig* load_config(const std::filesystem::path& path) {
+  static AppConfig cfg;
+  std::string json;
+  if (!ReadAll(expand_user_home(path), &json)) return nullptr;
 
-  AppConfig cfg;
+  cfg = AppConfig{};
   cfg.llm.providers_json_path = expand_user_home(resolve_env_value(
       extract_json_string_or_default(json, "providers_json_path", "~/.cpp-agent/llm.json")));
 
-  auto model_r = extract_json_string(json, "model");
-  if (!model_r.ok()) return model_r.status();
-  cfg.llm.model = resolve_env_value(model_r.value());
+  std::string model;
+  if (!ExtractJsonString(json, "model", &model)) return nullptr;
+  cfg.llm.model = resolve_env_value(std::move(model));
 
-  auto pr_r = extract_json_string(json, "project_root");
-  if (!pr_r.ok()) return pr_r.status();
-  cfg.project_root = expand_user_home(resolve_env_value(pr_r.value()));
+  std::string project_root;
+  if (!ExtractJsonString(json, "project_root", &project_root)) return nullptr;
+  cfg.project_root = expand_user_home(resolve_env_value(std::move(project_root)));
 
-  auto sd_r = extract_json_string(json, "storage_dir");
-  if (!sd_r.ok()) return sd_r.status();
-  cfg.storage_dir = expand_user_home(resolve_env_value(sd_r.value()));
+  std::string storage_dir;
+  if (!ExtractJsonString(json, "storage_dir", &storage_dir)) return nullptr;
+  cfg.storage_dir = expand_user_home(resolve_env_value(std::move(storage_dir)));
 
   cfg.plan_prompt_path =
       resolve_env_value(extract_json_string_or_default(json, "plan_prompt_path", "config/plan_prompt.md"));
@@ -167,7 +157,7 @@ cpp_agent::core::Result<AppConfig> load_config(const std::filesystem::path& path
 
   cfg.debug.log_llm = extract_json_bool_or_default(json, "log_llm", false);
 
-  return cfg;
+  return &cfg;
 }
 
-} // namespace cpp_agent::app
+} // namespace agent

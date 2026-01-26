@@ -7,7 +7,7 @@
 #include <future>
 #include <sstream>
 
-namespace cpp_agent::infra::tools {
+namespace agent {
 
 static std::string extract_json_string_or_empty(const std::string& json, const std::string& key) {
   auto pos = json.find('"' + key + '"');
@@ -35,9 +35,9 @@ static std::string extract_json_string_or_empty(const std::string& json, const s
 
 ShellTool::ShellTool(int timeout_ms) : timeout_ms_(timeout_ms) {}
 
-static cpp_agent::core::ToolResult run_with_popen(const std::string& tool_call_id,
+static agent::ToolResult run_with_popen(const std::string& tool_call_id,
                                                  const std::string& command) {
-  cpp_agent::core::ToolResult tr;
+  agent::ToolResult tr;
   tr.tool_call_id = tool_call_id;
 
   std::string full = "bash -lc \"" + command + "\" 2>&1";
@@ -59,12 +59,12 @@ static cpp_agent::core::ToolResult run_with_popen(const std::string& tool_call_i
   return tr;
 }
 
-cpp_agent::core::ToolResult ShellTool::invoke(const std::string& tool_call_id,
+agent::ToolResult ShellTool::Invoke(const std::string& tool_call_id,
                                              const std::string& arguments_json,
-                                             const cpp_agent::interfaces::ToolContext& ctx) {
+                                             const agent::ToolContext& ctx) {
   auto cmd = extract_json_string_or_empty(arguments_json, "command");
 
-  cpp_agent::core::ToolResult tr;
+  agent::ToolResult tr;
   tr.tool_call_id = tool_call_id;
 
   if (cmd.empty()) {
@@ -90,4 +90,4 @@ cpp_agent::core::ToolResult ShellTool::invoke(const std::string& tool_call_id,
   return fut.get();
 }
 
-} // namespace cpp_agent::infra::tools
+} // namespace agent

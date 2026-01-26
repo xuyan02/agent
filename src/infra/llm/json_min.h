@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-namespace cpp_agent::infra::llm::json_min {
+namespace agent {
 
 bool extract_string_field(const std::string& obj, const std::string& key, std::string* out);
 bool extract_raw_field(const std::string& obj, const std::string& key, std::string* out);
@@ -14,4 +14,4 @@ bool split_top_level_objects(const std::string& arr, std::vector<std::string>* o
 
 bool parse_string_array(const std::string& arr, std::vector<std::string>* out);
 
-} // namespace cpp_agent::infra::llm::json_min
+} // namespace agent

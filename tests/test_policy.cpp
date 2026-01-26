@@ -5,7 +5,7 @@
 #include <iostream>
 
 static void test_path_sandbox() {
-  cpp_agent::core::Policy p(std::filesystem::path("/tmp"));
+  agent::Policy p(std::filesystem::path("/tmp"));
 
   auto ok = p.resolve_under_root("a/b.txt");
   assert(ok.has_value());
@@ -15,7 +15,7 @@ static void test_path_sandbox() {
 }
 
 static void test_shell_policy() {
-  cpp_agent::core::Policy p(std::filesystem::path("/tmp"));
+  agent::Policy p(std::filesystem::path("/tmp"));
 
   assert(p.allow_shell_command("echo hi").allowed);
   assert(!p.allow_shell_command("rm -rf / ").allowed);

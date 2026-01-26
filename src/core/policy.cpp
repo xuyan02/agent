@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-namespace cpp_agent::core {
+namespace agent {
 
 static bool starts_with(const std::string& s, const std::string& prefix) {
   return s.size() >= prefix.size() && std::equal(prefix.begin(), prefix.end(), s.begin());
@@ -48,4 +48,4 @@ PolicyDecision Policy::allow_shell_command(const std::string& command) const {
   return PolicyDecision{true, ""};
 }
 
-} // namespace cpp_agent::core
+} // namespace agent

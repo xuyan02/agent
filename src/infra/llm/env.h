@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include <string>
 
-namespace cpp_agent::infra::llm {
+namespace agent {
 
 inline std::string ResolveEnvValue(std::string v) {
   auto trim = [](const std::string& x) {
@@ -24,4 +24,4 @@ inline std::string ResolveEnvValue(std::string v) {
   return v;
 }
 
-} // namespace cpp_agent::infra::llm
+} // namespace agent
