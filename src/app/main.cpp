@@ -14,7 +14,7 @@ int main(int argc, char** argv) {
   std::string config_path = "~/.cpp-agent/settings.json";
   if (argc >= 2) config_path = argv[1];
 
-  auto cfg = cpp_agent::app::load_config_or_throw(config_path);
+  auto cfg_r = cpp_agent::app::load_config(config_path);
 
   // Single-threaded event loop.
   dust::MessageLoop loop(std::make_unique<dust::LinuxMessagePumpEpoll>());
@@ -23,7 +23,19 @@ int main(int argc, char** argv) {
   cpp_agent::infra::console::CliConsole console;
   console.AttachToMessageLoop(loop);
 
-  auto agent = cpp_agent::app::build_agent_or_throw(cfg, console);
+  if (!cfg_r.ok()) {
+    std::cerr << "config error: " << cfg_r.status().message << "\n";
+    return 2;
+  }
+
+  auto agent_r = cpp_agent::app::build_agent(cfg_r.value(), console);
+  if (!agent_r.ok()) {
+    std::cerr << "agent init error: " << agent_r.status().message << "\n";
+    return 3;
+  }
+
+  // Ensure Agent outlives the message loop callbacks it registers.
+  auto agent = std::move(agent_r.value());
   agent->Repl(loop);
 
   loop.Run();

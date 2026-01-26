@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/status.h"
+
 #include <filesystem>
 #include <string>
 
@@ -34,6 +36,6 @@ struct AppConfig {
   DebugConfig debug;
 };
 
-AppConfig load_config_or_throw(const std::filesystem::path& path);
+cpp_agent::core::Result<AppConfig> load_config(const std::filesystem::path& path);
 
 } // namespace cpp_agent::app

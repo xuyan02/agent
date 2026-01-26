@@ -224,12 +224,22 @@ static void CompleteEasy(GlobalState* g, CURL* easy, CURLcode code) {
 
   curl_multi_remove_handle(g->multi, easy);
   curl_easy_cleanup(easy);
+
+  // Mark as completed so a late Call::Cancel() is a no-op.
+  in->easy = nullptr;
+
   if (in->req_headers) curl_slist_free_all(in->req_headers);
 
   auto cb = std::move(in->cb);
   Result res = std::move(in->result);
 
   delete in;
+
+  // If a Call handle still exists, its Impl still holds an Inflight*.
+  // Clear it to avoid Cancel() using a dangling pointer.
+  // (See Call::Impl::Cancel() and AsyncClient::Start().)
+  // Note: We can't reach the Impl instance here; instead we rely on Cancel()
+  // checking in->easy==nullptr (set above) and in->g still valid.
 
   if (cb) cb(std::move(res));
 }
@@ -335,22 +345,31 @@ class Call::Impl {
   explicit Impl(Inflight* in) : in_(in) {}
 
   void Cancel() {
-    if (!in_) return;
-    in_->cancelled.store(true);
+    Inflight* in = in_;
+    if (!in) return;
+
+    // Mark cancelled for both the curl completion path and any late callbacks.
+    in->cancelled.store(true);
+
+    // If the request already completed, CompleteEasy() will have removed it from
+    // the multi handle and set in->easy to nullptr. In that case, Cancel is a no-op.
+    if (!in->easy) return;
 
     // Best-effort immediate abort.
-    if (in_->g && in_->g->multi && in_->easy) {
-      (void)curl_multi_remove_handle(in_->g->multi, in_->easy);
-      curl_easy_cleanup(in_->easy);
-      in_->easy = nullptr;
+    if (in->g && in->g->multi) {
+      (void)curl_multi_remove_handle(in->g->multi, in->easy);
+      curl_easy_cleanup(in->easy);
+      in->easy = nullptr;
 
       // Complete with cancelled.
-      in_->result.error.code = ErrorCode::kCancelled;
-      auto cb = std::move(in_->cb);
-      Result res = std::move(in_->result);
-      if (in_->req_headers) curl_slist_free_all(in_->req_headers);
-      delete in_;
+      in->result.error.code = ErrorCode::kCancelled;
+      auto cb = std::move(in->cb);
+      Result res = std::move(in->result);
+      if (in->req_headers) curl_slist_free_all(in->req_headers);
+
+      delete in;
       in_ = nullptr;
+
       if (cb) cb(std::move(res));
     }
   }

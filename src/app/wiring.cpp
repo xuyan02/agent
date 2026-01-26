@@ -17,8 +17,8 @@
 
 namespace cpp_agent::app {
 
-std::unique_ptr<cpp_agent::core::Agent> build_agent_or_throw(const AppConfig& cfg,
-                                                             cpp_agent::interfaces::IConsole& console) {
+cpp_agent::core::Result<std::unique_ptr<cpp_agent::core::Agent>> build_agent(
+    const AppConfig& cfg, cpp_agent::interfaces::IConsole& console) {
   static cpp_agent::infra::storage::JsonFileStorage storage(cfg.storage_dir);
   // LLM providers (streaming via infra/llm).
   static cpp_agent::infra::llm::LlmContext llm;

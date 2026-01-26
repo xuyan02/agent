@@ -1,6 +1,6 @@
 #include "infra/plan/plan_store.h"
 
-#include "core/errors.h"
+#include "core/status.h"
 
 #include <fstream>
 #include <sstream>
@@ -75,41 +75,41 @@ static bool parse_bool_or_false(const std::string& s, size_t& i) {
   return false;
 }
 
-static void expect(const std::string& s, size_t& i, char ch) {
+static bool expect(const std::string& s, size_t& i, char ch) {
   i = skip_ws(s, i);
   if (i >= s.size() || s[i] != ch) {
-    throw cpp_agent::core::AgentError(cpp_agent::core::ErrorCode::kInvalidArgument,
-                                     std::string("Invalid plan.json near '") + ch + "'");
+    return false;
   }
   i++;
+  return true;
 }
 
 static void skip_value(const std::string& s, size_t& i);
 
-static void skip_object(const std::string& s, size_t& i) {
-  expect(s, i, '{');
+static bool skip_object(const std::string& s, size_t& i) {
+  if (!expect(s, i, '{')) return false;
   for (;;) {
     i = skip_ws(s, i);
     if (i < s.size() && s[i] == '}') {
       i++;
-      return;
+      return true;
     }
     auto k = parse_string(s, i);
-    if (!k) throw cpp_agent::core::AgentError(cpp_agent::core::ErrorCode::kInvalidArgument, "Invalid JSON key");
-    expect(s, i, ':');
+    if (!k) return false;
+    if (!expect(s, i, ':')) return false;
     skip_value(s, i);
     i = skip_ws(s, i);
     if (i < s.size() && s[i] == ',') i++;
   }
 }
 
-static void skip_array(const std::string& s, size_t& i) {
-  expect(s, i, '[');
+static bool skip_array(const std::string& s, size_t& i) {
+  if (!expect(s, i, '[')) return false;
   for (;;) {
     i = skip_ws(s, i);
     if (i < s.size() && s[i] == ']') {
       i++;
-      return;
+      return true;
     }
     skip_value(s, i);
     i = skip_ws(s, i);
@@ -125,8 +125,14 @@ static void skip_value(const std::string& s, size_t& i) {
     if (!tmp) return;
     return;
   }
-  if (s[i] == '{') return skip_object(s, i);
-  if (s[i] == '[') return skip_array(s, i);
+  if (s[i] == '{') {
+    (void)skip_object(s, i);
+    return;
+  }
+  if (s[i] == '[') {
+    (void)skip_array(s, i);
+    return;
+  }
   // bool/null/number
   while (i < s.size() && s[i] != ',' && s[i] != ']' && s[i] != '}') i++;
 }
@@ -201,12 +207,12 @@ static size_t span_json_value(const std::string& s, size_t i) {
   }
   if (s[i] == '{') {
     size_t j = i;
-    skip_object(s, j);
+    (void)skip_object(s, j);
     return j;
   }
   if (s[i] == '[') {
     size_t j = i;
-    skip_array(s, j);
+    (void)skip_array(s, j);
     return j;
   }
   while (i < s.size() && s[i] != ',' && s[i] != ']' && s[i] != '}') i++;
@@ -727,10 +733,11 @@ void PlanStore::ensure_active_leaf_or_clear_locked() {
 void PlanStore::persist_locked() {
   std::error_code ec;
   std::filesystem::create_directories(path_.parent_path(), ec);
+
   std::ofstream ofs(path_);
   if (!ofs) {
-    throw cpp_agent::core::AgentError(cpp_agent::core::ErrorCode::kIo,
-                                     "Failed to write plan.json: " + path_.string());
+    // Best-effort: keep running without persistence.
+    return;
   }
   ofs << serialize_plan_json(plan_);
 }

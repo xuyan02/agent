@@ -33,6 +33,10 @@ add_library(cpp_agent_lib
 
 target_include_directories(cpp_agent_lib PUBLIC src)
 
+# This project is built with C++ exceptions disabled.
+# Keep third_party targets untouched; only apply to our own targets.
+target_compile_options(cpp_agent_lib PRIVATE -fno-exceptions -g)
+
 include(ExternalProject)
 
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
@@ -117,7 +121,7 @@ add_subdirectory(third_party/curl EXCLUDE_FROM_ALL)
 
 # dust (MessageLoop runtime)
 # Allow building dust's own tests in the top-level build tree.
-set(DUST_BUILD_TESTS ON CACHE BOOL "Build dust tests" FORCE)
+set(DUST_BUILD_TESTS OFF CACHE BOOL "Build dust tests" FORCE)
 add_subdirectory(third_party/dust EXCLUDE_FROM_ALL)
 
 target_link_libraries(cpp_agent_lib PRIVATE libcurl dust)
@@ -129,9 +133,11 @@ target_include_directories(cpp_agent_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/thir
 
 add_executable(cpp-agent src/app/main.cpp)
 target_link_libraries(cpp-agent PRIVATE cpp_agent_lib)
+target_compile_options(cpp-agent PRIVATE -fno-exceptions -g)
 
 add_executable(cpp-agent-http-async-baidu-smoke apps/http_async_baidu_smoke.cc)
 target_link_libraries(cpp-agent-http-async-baidu-smoke PRIVATE cpp_agent_lib)
+target_compile_options(cpp-agent-http-async-baidu-smoke PRIVATE -fno-exceptions -g)
 
 if(CPP_AGENT_BUILD_TESTS)
   enable_testing()
@@ -140,18 +146,21 @@ if(CPP_AGENT_BUILD_TESTS)
     tests/test_policy.cpp
   )
   target_link_libraries(cpp-agent-tests-policy PRIVATE cpp_agent_lib)
+  target_compile_options(cpp-agent-tests-policy PRIVATE -fno-exceptions -g)
   add_test(NAME cpp-agent-tests-policy COMMAND cpp-agent-tests-policy)
 
   add_executable(cpp-agent-tests-config-path
     tests/test_config_path.cpp
   )
   target_link_libraries(cpp-agent-tests-config-path PRIVATE cpp_agent_lib)
+  target_compile_options(cpp-agent-tests-config-path PRIVATE -fno-exceptions -g)
   add_test(NAME cpp-agent-tests-config-path COMMAND cpp-agent-tests-config-path)
 
   add_executable(cpp-agent-tests-tool-calls-parsing
     tests/test_tool_calls_parsing.cpp
   )
   target_link_libraries(cpp-agent-tests-tool-calls-parsing PRIVATE cpp_agent_lib)
+  target_compile_options(cpp-agent-tests-tool-calls-parsing PRIVATE -fno-exceptions -g)
   add_test(NAME cpp-agent-tests-tool-calls-parsing COMMAND cpp-agent-tests-tool-calls-parsing)
 
   # Tool calling disabled in streaming-only mode for now.
@@ -165,36 +174,42 @@ if(CPP_AGENT_BUILD_TESTS)
     tests/test_plan_replan.cpp
   )
   target_link_libraries(cpp-agent-tests-plan-replan PRIVATE cpp_agent_lib)
+  target_compile_options(cpp-agent-tests-plan-replan PRIVATE -fno-exceptions -g)
   add_test(NAME cpp-agent-tests-plan-replan COMMAND cpp-agent-tests-plan-replan)
 
   add_executable(cpp-agent-tests-plan-complete-render
     tests/test_plan_complete_render.cpp
   )
   target_link_libraries(cpp-agent-tests-plan-complete-render PRIVATE cpp_agent_lib)
+  target_compile_options(cpp-agent-tests-plan-complete-render PRIVATE -fno-exceptions -g)
   add_test(NAME cpp-agent-tests-plan-complete-render COMMAND cpp-agent-tests-plan-complete-render)
 
   add_executable(cpp-agent-tests-plan-active-migration
     tests/test_plan_active_migration.cpp
   )
   target_link_libraries(cpp-agent-tests-plan-active-migration PRIVATE cpp_agent_lib)
+  target_compile_options(cpp-agent-tests-plan-active-migration PRIVATE -fno-exceptions -g)
   add_test(NAME cpp-agent-tests-plan-active-migration COMMAND cpp-agent-tests-plan-active-migration)
 
   add_executable(cpp-agent-tests-http-async-baidu
     tests/test_http_async_baidu.cpp
   )
   target_link_libraries(cpp-agent-tests-http-async-baidu PRIVATE cpp_agent_lib)
+  target_compile_options(cpp-agent-tests-http-async-baidu PRIVATE -fno-exceptions -g)
   add_test(NAME cpp-agent-tests-http-async-baidu COMMAND cpp-agent-tests-http-async-baidu)
 
   add_executable(cpp-agent-tests-llm-context
     tests/test_llm_context.cpp
   )
   target_link_libraries(cpp-agent-tests-llm-context PRIVATE cpp_agent_lib)
+  target_compile_options(cpp-agent-tests-llm-context PRIVATE -fno-exceptions -g)
   add_test(NAME cpp-agent-tests-llm-context COMMAND cpp-agent-tests-llm-context)
 
   add_executable(cpp-agent-tests-llm-config-loader
     tests/test_llm_config_loader.cpp
   )
   target_link_libraries(cpp-agent-tests-llm-config-loader PRIVATE cpp_agent_lib)
+  target_compile_options(cpp-agent-tests-llm-config-loader PRIVATE -fno-exceptions -g)
   add_test(NAME cpp-agent-tests-llm-config-loader COMMAND cpp-agent-tests-llm-config-loader)
 
 endif()

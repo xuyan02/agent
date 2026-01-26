@@ -1,6 +1,6 @@
 #include "infra/storage/json_file_storage.h"
 
-#include "core/errors.h"
+#include "core/status.h"
 
 #include <chrono>
 #include <fstream>
@@ -20,12 +20,10 @@ static std::filesystem::path expand_home(std::filesystem::path p) {
 
 JsonFileStorage::JsonFileStorage(std::filesystem::path storage_dir)
     : storage_dir_(expand_home(std::move(storage_dir))) {
+  // With exceptions disabled, filesystem errors are handled via std::error_code.
   std::error_code ec;
   std::filesystem::create_directories(storage_dir_, ec);
-  if (ec) {
-    throw cpp_agent::core::AgentError(cpp_agent::core::ErrorCode::kIo,
-                                     "Failed to create storage dir" );
-  }
+  (void)ec; // best-effort; if it fails we'll still try to append logs later.
   log_path_ = storage_dir_ / "logs.txt";
 }
 

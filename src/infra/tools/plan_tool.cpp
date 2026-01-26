@@ -1,6 +1,6 @@
 #include "infra/tools/plan_tool.h"
 
-#include "core/errors.h"
+#include "core/status.h"
 
 #include <string>
 
@@ -116,13 +116,13 @@ static std::string extract_raw_field_or_empty(const std::string& json, const std
   return json.substr(pos, end - pos);
 }
 
-static cpp_agent::infra::plan::Task parse_task_object_or_throw(const std::string& obj_json) {
+static cpp_agent::core::Result<cpp_agent::infra::plan::Task> parse_task_object(const std::string& obj_json) {
   cpp_agent::infra::plan::Task t;
   t.goal = extract_json_string_or_empty(obj_json, "goal");
   t.title = extract_json_string_or_empty(obj_json, "title");
   if (t.goal.empty() || t.title.empty()) {
-    throw cpp_agent::core::AgentError(cpp_agent::core::ErrorCode::kInvalidArgument,
-                                     "Task must have goal and title");
+    return cpp_agent::core::Status::Error(cpp_agent::core::ErrorCode::kInvalidArgument,
+                                         "Task must have goal and title");
   }
 
   auto children_raw = extract_raw_field_or_empty(obj_json, "children");
@@ -140,7 +140,9 @@ static cpp_agent::infra::plan::Task parse_task_object_or_throw(const std::string
       size_t obj_end = skip_object(children_raw, i);
       if (obj_end <= i || obj_end > children_raw.size()) break;
       std::string child_obj = children_raw.substr(i, obj_end - i);
-      t.children.push_back(parse_task_object_or_throw(child_obj));
+      auto child_r = parse_task_object(child_obj);
+      if (!child_r.ok()) return child_r.status();
+      t.children.push_back(std::move(child_r.value()));
       i = obj_end;
       i = skip_ws(children_raw, i);
       if (i < children_raw.size() && children_raw[i] == ',') i++;
@@ -150,15 +152,16 @@ static cpp_agent::infra::plan::Task parse_task_object_or_throw(const std::string
   return t;
 }
 
-static std::vector<cpp_agent::infra::plan::Task> parse_new_children_or_throw(const std::string& arguments_json) {
+static cpp_agent::core::Result<std::vector<cpp_agent::infra::plan::Task>> parse_new_children(
+    const std::string& arguments_json) {
   auto raw = extract_raw_field_or_empty(arguments_json, "new_children");
   if (raw.empty()) {
-    throw cpp_agent::core::AgentError(cpp_agent::core::ErrorCode::kInvalidArgument,
-                                     "Missing argument: new_children");
+    return cpp_agent::core::Status::Error(cpp_agent::core::ErrorCode::kInvalidArgument,
+                                         "Missing argument: new_children");
   }
   if (raw.front() != '[') {
-    throw cpp_agent::core::AgentError(cpp_agent::core::ErrorCode::kInvalidArgument,
-                                     "new_children must be an array");
+    return cpp_agent::core::Status::Error(cpp_agent::core::ErrorCode::kInvalidArgument,
+                                         "new_children must be an array");
   }
 
   std::vector<cpp_agent::infra::plan::Task> out;
@@ -174,7 +177,9 @@ static std::vector<cpp_agent::infra::plan::Task> parse_new_children_or_throw(con
     size_t obj_end = skip_object(raw, i);
     if (obj_end <= i || obj_end > raw.size()) break;
     std::string obj = raw.substr(i, obj_end - i);
-    out.push_back(parse_task_object_or_throw(obj));
+    auto t_r = parse_task_object(obj);
+    if (!t_r.ok()) return t_r.status();
+    out.push_back(std::move(t_r.value()));
     i = obj_end;
     i = skip_ws(raw, i);
     if (i < raw.size() && raw[i] == ',') i++;
@@ -294,14 +299,13 @@ cpp_agent::core::ToolResult PlanTool::invoke(const std::string& tool_call_id,
       return tr;
     }
 
-    std::vector<cpp_agent::infra::plan::Task> new_children;
-    try {
-      new_children = parse_new_children_or_throw(arguments_json);
-    } catch (const cpp_agent::core::AgentError& e) {
+    auto new_children_r = parse_new_children(arguments_json);
+    if (!new_children_r.ok()) {
       tr.ok = false;
-      tr.content = e.what();
+      tr.content = new_children_r.status().message;
       return tr;
     }
+    auto new_children = std::move(new_children_r.value());
 
     auto res = store_->replan(*no, std::move(new_children), history_line);
     tr.ok = (res == "ok");

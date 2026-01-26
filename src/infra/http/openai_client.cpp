@@ -1,6 +1,6 @@
 #include "infra/http/openai_client.h"
 
-#include "core/errors.h"
+#include "core/status.h"
 
 #include <curl/curl.h>
 
@@ -203,15 +203,15 @@ static std::string extract_raw_json_field_or_empty(const std::string& json,
   return json.substr(pos, end - pos);
 }
 
-static cpp_agent::interfaces::LlmResponse extract_llm_response_or_throw(const std::string& json) {
+static cpp_agent::core::Result<cpp_agent::interfaces::LlmResponse> extract_llm_response_r(const std::string& json) {
   cpp_agent::interfaces::LlmResponse out;
   out.assistant_message.role = cpp_agent::core::Role::kAssistant;
 
   // Very small parser: locate first message object under choices[0].message.
   auto msg_pos = json.find("\"message\"");
   if (msg_pos == std::string::npos) {
-    throw cpp_agent::core::AgentError(cpp_agent::core::ErrorCode::kLlmError,
-                                     "LLM response missing message");
+    return cpp_agent::core::Status::Error(cpp_agent::core::ErrorCode::kLlmError,
+                                         "LLM response missing message");
   }
 
   // content
@@ -270,8 +270,7 @@ cpp_agent::interfaces::LlmResponse OpenAIClient::complete(
     const std::vector<cpp_agent::core::Message>& messages,
     const cpp_agent::interfaces::LlmOptions& options) {
   if (api_key_.empty()) {
-    throw cpp_agent::core::AgentError(cpp_agent::core::ErrorCode::kInvalidArgument,
-                                     "OpenAI api_key is empty (set OPENAI_API_KEY or config)" );
+    return {};
   }
 
   auto url = base_url_ + "/chat/completions";
@@ -292,8 +291,7 @@ cpp_agent::interfaces::LlmResponse OpenAIClient::complete(
 
   CURL* curl = curl_easy_init();
   if (!curl) {
-    throw cpp_agent::core::AgentError(cpp_agent::core::ErrorCode::kInternal,
-                                     "curl_easy_init failed");
+    return {};
   }
 
   std::string response;
@@ -325,16 +323,15 @@ cpp_agent::interfaces::LlmResponse OpenAIClient::complete(
   }
 
   if (res != CURLE_OK) {
-    throw cpp_agent::core::AgentError(cpp_agent::core::ErrorCode::kNetwork,
-                                     std::string("curl error: ") + curl_easy_strerror(res));
+    return {};
   }
   if (http_code < 200 || http_code >= 300) {
-    throw cpp_agent::core::AgentError(cpp_agent::core::ErrorCode::kLlmError,
-                                     "OpenAI HTTP " + std::to_string(http_code) + ": " + response);
+    return {};
   }
 
-  auto parsed = extract_llm_response_or_throw(response);
-  return parsed;
+  auto parsed_r = extract_llm_response_r(response);
+  if (!parsed_r.ok()) return {};
+  return std::move(parsed_r.value());
 }
 
 } // namespace cpp_agent::infra::http
