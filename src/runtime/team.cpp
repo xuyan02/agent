@@ -49,7 +49,6 @@ static std::vector<std::string> ExtractAgentNames(const std::string& json) {
 }
 
 std::unique_ptr<Team> Team::Load(Runtime& runtime,
-                                 agent::LlmContext& llm,
                                  const std::string& path,
                                  const std::string& default_model) {
   const std::string json = ReadAll(path);
@@ -70,7 +69,7 @@ std::unique_ptr<Team> Team::Load(Runtime& runtime,
     return nullptr;
   }
 
-  auto team = std::make_unique<Team>(leader);
+  auto team = std::make_unique<Team>(runtime, leader);
 
   bool leader_found = false;
   std::unordered_map<std::string, bool> seen;
@@ -83,7 +82,7 @@ std::unique_ptr<Team> Team::Load(Runtime& runtime,
     seen[n] = true;
     if (n == leader) leader_found = true;
 
-    auto agent = std::make_unique<GeneralAgent>(runtime, n, llm, default_model);
+    auto agent = std::make_unique<GeneralAgent>(*team, n, default_model);
     if (!team->Add(std::move(agent))) {
       std::cerr << "error: failed to add agent: " << n << "\n";
       return nullptr;
@@ -115,7 +114,12 @@ bool Team::Save(const std::string& path) const {
   return true;
 }
 
-Team::Team(std::string leader) : leader_(std::move(leader)) {}
+Team::Team(Runtime& runtime, std::string leader)
+    : runtime_(runtime), leader_(std::move(leader)) {}
+
+Runtime& Team::runtime() { return runtime_; }
+
+const Runtime& Team::runtime() const { return runtime_; }
 
 bool Team::Add(std::unique_ptr<GeneralAgent> agent) {
   if (!agent) return false;

@@ -12,13 +12,18 @@ class ProfessionalAgent final : public Agent {
 public:
   using ReplyFn = dust::Function<void(const std::string& content)>;
 
-  using Agent::Agent;
+  ProfessionalAgent(Team& team, std::string name, std::string model);
   ~ProfessionalAgent() override;
 
   void Input(const std::string& input, ReplyFn reply);
 
 private:
-  // prototype: no implementation details yet
+  void OnToken(const std::string& tok);
+  void OnDone();
+
+  std::string model_;
+  std::string out_;
+  ReplyFn reply_;
 };
 
 } // namespace agent

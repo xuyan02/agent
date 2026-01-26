@@ -17,22 +17,22 @@
 
 namespace agent {
 
-agent::LlmContext* build_llm(const AppConfig& cfg) {
-  static agent::LlmContext llm;
-  static bool llm_inited = false;
-  if (!llm_inited) {
-    llm_inited = true;
-    llm.RegisterFactory(std::make_unique<agent::OpenAIProviderFactory>());
-    (void)agent::RegisterProvidersFromConfig(llm, cfg.llm.providers_json_path);
+std::unique_ptr<agent::LlmContext> build_llm(const AppConfig& cfg) {
+  auto llm = std::make_unique<agent::LlmContext>();
+  llm->RegisterFactory(std::make_unique<agent::OpenAIProviderFactory>());
+
+  if (!agent::RegisterProvidersFromConfig(*llm, cfg.llm.providers_json_path)) {
+    return nullptr;
   }
-  return &llm;
+
+  return llm;
 }
 
 std::unique_ptr<agent::Agent> build_agent(
     const AppConfig& cfg, agent::IConsole& console) {
   static agent::JsonFileStorage storage(cfg.storage_dir);
 
-  auto* llm = build_llm(cfg);
+  static std::unique_ptr<agent::LlmContext> llm = build_llm(cfg);
   if (!llm) return nullptr;
 
   agent::Policy policy(cfg.project_root);
@@ -63,13 +63,13 @@ std::unique_ptr<agent::Agent> build_agent(
   }
 
   return std::make_unique<agent::Agent>(*llm,
-                                                  console,
-                                                  storage,
-                                                  std::move(policy),
-                                                  std::move(tools),
-                                                  opt,
-                                                  *plan_store,
-                                                  plan_prompt_md);
+                                        console,
+                                        storage,
+                                        std::move(policy),
+                                        std::move(tools),
+                                        opt,
+                                        *plan_store,
+                                        plan_prompt_md);
 }
 
 } // namespace agent

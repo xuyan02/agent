@@ -17,11 +17,49 @@ bool DebugLlm() {
   return v && *v && strcmp(v, "0") != 0;
 }
 
+
 bool contains_model(const std::vector<std::string>& models, const std::string& model_name) {
   for (const auto& m : models) {
     if (m == model_name) return true;
   }
   return false;
+}
+
+static std::string JsonEscapeStringImpl(const std::string& s);
+
+static std::string JsonEscapeStringImpl(const std::string& s) {
+  // Minimal JSON string escape (no surrounding quotes).
+  // Control chars must be escaped per JSON spec.
+  std::string out;
+  out.reserve(s.size());
+  for (unsigned char uc : s) {
+    const char c = static_cast<char>(uc);
+    switch (c) {
+      case '\\': out += "\\\\"; break;
+      case '"': out += "\\\""; break;
+      case '\b': out += "\\b"; break;
+      case '\f': out += "\\f"; break;
+      case '\n': out += "\\n"; break;
+      case '\r': out += "\\r"; break;
+      case '\t': out += "\\t"; break;
+      default:
+        if (uc <= 0x1F) {
+          // \u001f
+          static const char* kHex = "0123456789abcdef";
+          out += "\\u00";
+          out.push_back(kHex[(uc >> 4) & 0xF]);
+          out.push_back(kHex[uc & 0xF]);
+        } else {
+          out.push_back(c);
+        }
+        break;
+    }
+  }
+  return out;
+}
+
+static std::string JsonEscapeString(const std::string& s) {
+  return JsonEscapeStringImpl(s);
 }
 
 } // namespace
@@ -49,10 +87,11 @@ OpenAIRequest::OpenAIRequest(std::string base_url,
   req.headers.push_back({"Accept", "text/event-stream"});
   req.headers.push_back({"Authorization", "Bearer " + api_key_});
 
-  // NOTE: minimal JSON; prompt is inserted verbatim (no escaping).
+  // NOTE: minimal JSON; prompt must be escaped.
+  const std::string escaped_prompt = JsonEscapeString(prompt);
   req.body = std::string("{\"model\":\"") + model_name_ +
              std::string("\",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"") +
-             prompt + std::string("\"}]}");
+             escaped_prompt + std::string("\"}]}");
 
   req.on_body_chunk = [this](const char* data, size_t n) {
     sse_.Feed(data, n);

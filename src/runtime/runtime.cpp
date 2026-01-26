@@ -17,7 +17,16 @@ static std::string Trim(std::string s) {
   return s.substr(b, e - b);
 }
 
-Runtime::Runtime(agent::IConsole& console) : console_(console) {}
+Runtime::Runtime(agent::IConsole& console, std::unique_ptr<agent::LlmContext> llm)
+    : console_(console), llm_(std::move(llm)) {
+  if (!llm_) {
+    std::cerr << "error: runtime created without llm\n";
+  }
+}
+
+agent::LlmContext& Runtime::llm() { return *llm_; }
+
+const agent::LlmContext& Runtime::llm() const { return *llm_; }
 
 void Runtime::SetTeam(std::unique_ptr<Team> team) { team_ = std::move(team); }
 

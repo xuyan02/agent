@@ -18,6 +18,6 @@ namespace agent {
 std::unique_ptr<agent::Agent> build_agent(const AppConfig& cfg, agent::IConsole& console);
 
 // Builds and initializes the shared LLM context.
-agent::LlmContext* build_llm(const AppConfig& cfg);
+std::unique_ptr<agent::LlmContext> build_llm(const AppConfig& cfg);
 
 } // namespace agent

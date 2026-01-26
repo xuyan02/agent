@@ -17,6 +17,7 @@ add_library(cpp_agent_lib
 
   src/runtime/agent.cpp
   src/runtime/general_agent.cpp
+  src/runtime/message_codec.cpp
   src/runtime/professional_agent.cpp
   src/runtime/runtime.cpp
   src/runtime/team.cpp
@@ -169,6 +170,20 @@ if(CPP_AGENT_BUILD_TESTS)
   target_link_libraries(cpp-agent-tests-tool-calls-parsing PRIVATE cpp_agent_lib)
   target_compile_options(cpp-agent-tests-tool-calls-parsing PRIVATE -fno-exceptions -g)
   add_test(NAME cpp-agent-tests-tool-calls-parsing COMMAND cpp-agent-tests-tool-calls-parsing)
+
+  add_executable(cpp-agent-tests-message-codec
+    tests/test_message_codec.cpp
+  )
+  target_link_libraries(cpp-agent-tests-message-codec PRIVATE cpp_agent_lib)
+  target_compile_options(cpp-agent-tests-message-codec PRIVATE -fno-exceptions -g)
+  add_test(NAME cpp-agent-tests-message-codec COMMAND cpp-agent-tests-message-codec)
+
+  add_executable(cpp-agent-tests-professional-agent
+    tests/test_professional_agent.cpp
+  )
+  target_link_libraries(cpp-agent-tests-professional-agent PRIVATE cpp_agent_lib)
+  target_compile_options(cpp-agent-tests-professional-agent PRIVATE -fno-exceptions -g)
+  add_test(NAME cpp-agent-tests-professional-agent COMMAND cpp-agent-tests-professional-agent)
 
   # Tool calling disabled in streaming-only mode for now.
   # add_executable(cpp-agent-tests-agent-tool-loop

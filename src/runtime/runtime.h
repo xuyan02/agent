@@ -2,6 +2,8 @@
 
 #include "runtime/message.h"
 
+#include "infra/llm/llm_context.h"
+
 #include <memory>
 #include <string>
 
@@ -15,7 +17,10 @@ class Team;
 
 class Runtime {
 public:
-  explicit Runtime(agent::IConsole& console);
+  Runtime(agent::IConsole& console, std::unique_ptr<agent::LlmContext> llm);
+
+  agent::LlmContext& llm();
+  const agent::LlmContext& llm() const;
 
   void SetTeam(std::unique_ptr<Team> team);
 
@@ -27,6 +32,7 @@ private:
   void DeliverToAgent(const Message& msg);
 
   agent::IConsole& console_;
+  std::unique_ptr<agent::LlmContext> llm_;
   std::unique_ptr<Team> team_;
 };
 

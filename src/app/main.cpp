@@ -30,17 +30,16 @@ int main(int argc, char** argv) {
   }
 
   // Build LLM context and register providers.
-  auto* llm = agent::build_llm(*cfg);
+  auto llm = agent::build_llm(*cfg);
   if (!llm) {
     std::cerr << "llm init error\n";
     return 3;
   }
 
-  agent::Runtime runtime(console);
+  agent::Runtime runtime(console, std::move(llm));
 
   // Prototype: load team from repo config.
   auto team = agent::Team::Load(runtime,
-                                *llm,
                                 (cfg->project_root / "config" / "team.json").string(),
                                 cfg->llm.model);
   if (!team) {
