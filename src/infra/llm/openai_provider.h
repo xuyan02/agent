@@ -18,6 +18,7 @@ public:
                 std::string model_name,
                 std::string system_prompt,
                 std::string user_prompt,
+                std::vector<agent::Tool> tools,
                 OnToken on_token,
                 OnDone on_done);
 

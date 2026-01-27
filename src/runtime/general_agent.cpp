@@ -4,6 +4,8 @@
 #include "runtime/runtime.h"
 #include "runtime/team.h"
 
+#include "runtime/plan2/plan2_functions.h"
+
 #include "dust/message_loop/message_loop.h"
 
 #include <cctype>
@@ -35,12 +37,27 @@ std::string GeneralAgent::GetSystemPrompt() const {
   out += "[Skill: general_agent]\n";
   out += s->prompt_md;
   if (!out.empty() && out.back() != '\n') out.push_back('\n');
+
+  // Inject current plan into system prompt every round.
+  out += "\n---\n\n";
+  out += plan2_.RenderMarkdown();
+  if (!out.empty() && out.back() != '\n') out.push_back('\n');
   out += "\n---\n\n";
   return out;
 }
 
+std::vector<Tool> GeneralAgent::GetTools() {
+  Tool t;
+  t.id = "plan";
+  t.description = "Task planning and management";
+  t.functions.push_back(std::make_shared<agent::plan2::PlanAddTasksFunction>(&plan2_));
+  t.functions.push_back(std::make_shared<agent::plan2::PlanSetStatusFunction>(&plan2_));
+  t.functions.push_back(std::make_shared<agent::plan2::PlanRemoveTaskFunction>(&plan2_));
+  return {t};
+}
+
 std::vector<std::string> GeneralAgent::GetActiveTools() const {
-  return {};
+  return {"plan"};
 }
 
 void GeneralAgent::TryStartRequest() {

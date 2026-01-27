@@ -2,6 +2,7 @@
 
 #include "runtime/agent.h"
 #include "runtime/message.h"
+#include "runtime/plan2/plan2_model.h"
 
 #include <deque>
 #include <string>
@@ -18,6 +19,7 @@ public:
   ~GeneralAgent() override;
 
   std::string GetSystemPrompt() const override;
+  std::vector<Tool> GetTools() override;
 
   std::vector<std::string> GetActiveTools() const override;
 
@@ -34,6 +36,8 @@ private:
   std::string model_;
 
   std::deque<Message> queue_;
+
+  agent::plan2::PlanModel plan2_;
 };
 
 } // namespace agent

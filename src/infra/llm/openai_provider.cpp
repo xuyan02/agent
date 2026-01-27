@@ -6,6 +6,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <sstream>
 #include <string.h>
 #include <utility>
 
@@ -69,6 +70,7 @@ OpenAIRequest::OpenAIRequest(std::string base_url,
                              std::string model_name,
                              std::string system_prompt,
                              std::string user_prompt,
+                             std::vector<agent::Tool> tools,
                              OnToken on_token,
                              OnDone on_done)
     : http_(),
@@ -91,11 +93,33 @@ OpenAIRequest::OpenAIRequest(std::string base_url,
   // NOTE: minimal JSON; prompts must be escaped.
   const std::string escaped_system = JsonEscapeString(system_prompt);
   const std::string escaped_user = JsonEscapeString(user_prompt);
+  std::string tools_json;
+  if (!tools.empty()) {
+    // Expand Tool->Functions into OpenAI chat.completions tools=[{type:function,function:{...}}].
+    std::ostringstream oss;
+    oss << ",\"tools\":[";
+
+    bool first = true;
+    for (const auto& tool : tools) {
+      for (const auto& fn : tool.functions) {
+        if (!fn) continue;
+        const auto& spec = fn->spec();
+        if (!first) oss << ',';
+        first = false;
+        oss << "{\"type\":\"function\",\"function\":{\"name\":\"" << JsonEscapeString(spec.name)
+            << "\",\"description\":\"" << JsonEscapeString(spec.description) << "\",\"parameters\":"
+            << spec.parameters_json << "}}";
+      }
+    }
+    oss << ']';
+    tools_json = oss.str();
+  }
+
   req.body = std::string("{\"model\":\"") + model_name_ +
              std::string("\",\"stream\":true,\"messages\":[") +
              std::string("{\"role\":\"system\",\"content\":\"") + escaped_system +
              std::string("\"},{\"role\":\"user\",\"content\":\"") + escaped_user +
-             std::string("\"}]}");
+             std::string("\"}]") + tools_json + std::string("}");
 
   req.on_body_chunk = [this](const char* data, size_t n) {
     sse_.Feed(data, n);
@@ -166,7 +190,7 @@ bool OpenAIProvider::SupportsModel(const std::string& model_name) const {
 std::unique_ptr<LlmRequest> OpenAIProvider::Create(std::string model_name,
                                                  std::string system_prompt,
                                                  std::string user_prompt,
-                                                 std::vector<agent::Tool> /*tools*/,
+                                                 std::vector<agent::Tool> tools,
                                                  LlmRequest::OnToken on_token,
                                                  LlmRequest::OnDone on_done) {
   // Tool expansion/execution is wired later; MVP only carries the interface.
@@ -175,6 +199,7 @@ std::unique_ptr<LlmRequest> OpenAIProvider::Create(std::string model_name,
                                         std::move(model_name),
                                         std::move(system_prompt),
                                         std::move(user_prompt),
+                                        std::move(tools),
                                         std::move(on_token),
                                         std::move(on_done));
 }

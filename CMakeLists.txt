@@ -38,6 +38,11 @@ add_library(cpp_agent_lib
   src/infra/tools/shell_tool.cpp
   src/infra/storage/json_file_storage.cpp
   src/infra/console/cli_console.cpp
+
+  src/runtime/plan2/plan2_model.cpp
+  src/runtime/plan2/uuid_gen.cpp
+  src/runtime/plan2/plan2_tool.cpp
+  src/runtime/plan2/plan2_functions.cpp
 )
 
 target_include_directories(cpp_agent_lib PUBLIC src)
@@ -182,6 +187,13 @@ if(CPP_AGENT_BUILD_TESTS)
   add_executable(cpp-agent-tests-professional-agent
     tests/test_professional_agent.cpp
   )
+
+  add_executable(cpp-agent-tests-plan2-model
+    tests/test_plan2_model.cpp
+  )
+  target_link_libraries(cpp-agent-tests-plan2-model PRIVATE cpp_agent_lib)
+  target_compile_options(cpp-agent-tests-plan2-model PRIVATE -fno-exceptions -g)
+  add_test(NAME cpp-agent-tests-plan2-model COMMAND cpp-agent-tests-plan2-model)
 
   add_executable(cpp-agent-tests-skill-registry
     tests/test_skill_registry.cpp

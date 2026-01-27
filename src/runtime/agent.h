@@ -21,7 +21,7 @@ public:
   std::string name() const;
 
   virtual std::string GetSystemPrompt() const;
-  virtual std::vector<Tool> GetTools() const;
+  virtual std::vector<Tool> GetTools();
   virtual std::vector<std::string> GetActiveTools() const;
 
 protected:

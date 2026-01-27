@@ -23,7 +23,7 @@ bool Agent::HasActiveRequest() const { return active_req_ != nullptr; }
 
 std::string Agent::GetSystemPrompt() const { return {}; }
 
-std::vector<Tool> Agent::GetTools() const { return {}; }
+std::vector<Tool> Agent::GetTools() { return {}; }
 
 std::vector<std::string> Agent::GetActiveTools() const { return {}; }
 
