@@ -35,6 +35,7 @@ const LlmProviderFactory* LlmContext::FindProviderFactory(const std::string& pro
 std::unique_ptr<LlmRequest> LlmContext::Create(std::string model_name,
                                               std::string system_prompt,
                                               std::string user_prompt,
+                                              std::vector<agent::Tool> tools,
                                               LlmRequest::OnToken on_token,
                                               LlmRequest::OnDone on_done) {
   if (DebugLlm()) {
@@ -51,6 +52,7 @@ std::unique_ptr<LlmRequest> LlmContext::Create(std::string model_name,
     return provider->Create(std::move(model_name),
                             std::move(system_prompt),
                             std::move(user_prompt),
+                            std::move(tools),
                             std::move(on_token),
                             std::move(on_done));
   }

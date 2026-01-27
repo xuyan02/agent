@@ -166,8 +166,10 @@ bool OpenAIProvider::SupportsModel(const std::string& model_name) const {
 std::unique_ptr<LlmRequest> OpenAIProvider::Create(std::string model_name,
                                                  std::string system_prompt,
                                                  std::string user_prompt,
+                                                 std::vector<agent::Tool> /*tools*/,
                                                  LlmRequest::OnToken on_token,
                                                  LlmRequest::OnDone on_done) {
+  // Tool expansion/execution is wired later; MVP only carries the interface.
   return std::make_unique<OpenAIRequest>(base_url_,
                                         api_key_,
                                         std::move(model_name),

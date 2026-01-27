@@ -44,6 +44,7 @@ public:
       std::string model_name,
       std::string system_prompt,
       std::string user_prompt,
+      std::vector<agent::Tool> /*tools*/,
       agent::LlmRequest::OnToken /*on_token*/,
       agent::LlmRequest::OnDone /*on_done*/) override {
     events_->push_back("provider_create:" + name_ + ":" + model_name);
@@ -72,19 +73,19 @@ int main() {
 
   // Unknown model returns nullptr.
   {
-    auto req = reg.Create("missing", "", "hi", {}, {});
+    auto req = reg.Create("missing", "", "hi", std::vector<agent::Tool>{}, {}, {});
     assert(req == nullptr);
   }
 
   // Model selection picks the FIRST provider that supports it.
   {
-    auto req = reg.Create("model-a", "sys", "hello", {}, {});
+    auto req = reg.Create("model-a", "sys", "hello", std::vector<agent::Tool>{}, {}, {});
     assert(req != nullptr);
   }
 
   // This should be served by the second provider.
   {
-    auto req = reg.Create("model-b", "", "world", {}, {});
+    auto req = reg.Create("model-b", "", "world", std::vector<agent::Tool>{}, {}, {});
     assert(req != nullptr);
   }
 

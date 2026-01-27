@@ -23,6 +23,10 @@ bool Agent::HasActiveRequest() const { return active_req_ != nullptr; }
 
 std::string Agent::GetSystemPrompt() const { return {}; }
 
+std::vector<Tool> Agent::GetTools() const { return {}; }
+
+std::vector<std::string> Agent::GetActiveTools() const { return {}; }
+
 bool Agent::StartLlmRequest(std::string model,
                             std::string system_prompt,
                             std::string user_prompt,
@@ -33,6 +37,7 @@ bool Agent::StartLlmRequest(std::string model,
   active_req_ = runtime().llm().Create(std::move(model),
                                       std::move(system_prompt),
                                       std::move(user_prompt),
+                                      GetTools(),
                                       std::move(on_token),
                                       std::move(on_done));
   return active_req_ != nullptr;

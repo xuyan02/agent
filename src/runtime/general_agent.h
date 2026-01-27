@@ -19,6 +19,8 @@ public:
 
   std::string GetSystemPrompt() const override;
 
+  std::vector<std::string> GetActiveTools() const override;
+
   void Input(const Message& msg);
 
 private:

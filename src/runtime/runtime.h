@@ -2,6 +2,7 @@
 
 #include "runtime/message.h"
 #include "runtime/skill_registry.h"
+#include "runtime/tool.h"
 
 #include "infra/llm/llm_context.h"
 
@@ -32,6 +33,8 @@ public:
   void Emit(const Message& msg);
 
   const SkillRegistry& skills() const;
+
+  std::vector<Tool> GetTools() const;
 
 private:
   void DeliverToAgent(const Message& msg);

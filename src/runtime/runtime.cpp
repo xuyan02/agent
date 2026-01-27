@@ -35,6 +35,8 @@ const agent::LlmContext& Runtime::llm() const { return *llm_; }
 
 const SkillRegistry& Runtime::skills() const { return skills_; }
 
+std::vector<Tool> Runtime::GetTools() const { return {}; }
+
 void Runtime::SetTeam(std::unique_ptr<Team> team) { team_ = std::move(team); }
 
 void Runtime::OnCliLine(const std::string& line) {

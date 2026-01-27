@@ -1,6 +1,7 @@
 #pragma once
 
 #include "runtime/general_agent.h"
+#include "runtime/tool.h"
 
 #include <memory>
 #include <string>
@@ -28,6 +29,8 @@ public:
   GeneralAgent* Find(const std::string& name);
 
   std::string leader() const;
+
+  std::vector<Tool> GetTools() const;
 
 private:
   Runtime& runtime_;

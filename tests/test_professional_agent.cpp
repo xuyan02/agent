@@ -41,6 +41,7 @@ public:
   std::unique_ptr<agent::LlmRequest> Create(std::string /*model_name*/,
                                            std::string /*system_prompt*/,
                                            std::string user_prompt,
+                                           std::vector<agent::Tool> /*tools*/,
                                            agent::LlmRequest::OnToken on_token,
                                            agent::LlmRequest::OnDone on_done) override {
     return std::make_unique<ImmediateRequest>("echo:" + user_prompt, std::move(on_token), std::move(on_done));

@@ -93,6 +93,7 @@ void Agent::handle_user_input(const std::string& input) {
   active_req_ = llm_.Create(llm_options_.model,
                             std::move(system_prompt),
                             input,
+                            {},
                             std::move(on_token),
                             std::move(on_done));
   if (!active_req_) {

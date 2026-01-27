@@ -139,4 +139,6 @@ GeneralAgent* Team::Find(const std::string& name) {
 
 std::string Team::leader() const { return leader_; }
 
+std::vector<Tool> Team::GetTools() const { return {}; }
+
 } // namespace agent

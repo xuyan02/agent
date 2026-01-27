@@ -1,6 +1,7 @@
 #pragma once
 
 #include "infra/llm/llm_request.h"
+#include "runtime/tool.h"
 
 #include <memory>
 #include <string>
@@ -20,6 +21,8 @@ public:
   std::string name() const;
 
   virtual std::string GetSystemPrompt() const;
+  virtual std::vector<Tool> GetTools() const;
+  virtual std::vector<std::string> GetActiveTools() const;
 
 protected:
   Team& team();

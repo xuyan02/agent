@@ -1,9 +1,11 @@
 #pragma once
 
 #include "infra/llm/llm_request.h"
+#include "runtime/tool.h"
 
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace agent {
 
@@ -24,6 +26,7 @@ public:
   virtual std::unique_ptr<LlmRequest> Create(std::string model_name,
                                              std::string system_prompt,
                                              std::string user_prompt,
+                                             std::vector<agent::Tool> tools,
                                              LlmRequest::OnToken on_token,
                                              LlmRequest::OnDone on_done) = 0;
 

@@ -39,6 +39,10 @@ std::string GeneralAgent::GetSystemPrompt() const {
   return out;
 }
 
+std::vector<std::string> GeneralAgent::GetActiveTools() const {
+  return {};
+}
+
 void GeneralAgent::TryStartRequest() {
   if (HasActiveRequest()) return;
   if (queue_.empty()) return;

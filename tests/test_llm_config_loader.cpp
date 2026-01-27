@@ -41,6 +41,7 @@ public:
       std::string model_name,
       std::string system_prompt,
       std::string user_prompt,
+      std::vector<agent::Tool> /*tools*/,
       agent::LlmRequest::OnToken /*on_token*/,
       agent::LlmRequest::OnDone /*on_done*/) override {
     events_->push_back("provider_create:" + name_ + ":" + model_name);
@@ -106,7 +107,7 @@ int main() {
   assert(ok);
 
   {
-    auto req = ctx.Create("model-x", "", "hello", {}, {});
+    auto req = ctx.Create("model-x", "", "hello", std::vector<agent::Tool>{}, {}, {});
     assert(req != nullptr);
   }
 
