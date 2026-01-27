@@ -43,7 +43,13 @@ void GeneralAgent::TryStartRequest() {
 void GeneralAgent::OnRequestDone() {
   CancelActiveRequest();
 
-  for (auto& m : agent::ParseAgentMultiTargetOutput(name(), out_buf_)) {
+  auto out = agent::ParseAgentMultiTargetOutput(name(), out_buf_);
+  if (!out_buf_.empty() && out.empty()) {
+    std::cerr << "error: agent output dropped (missing @to: header). "
+                 "Add '@master:' or '@<agent>:' lines to route messages.\n";
+  }
+
+  for (auto& m : out) {
     if (m.to.empty()) {
       std::cerr << "error: empty to in agent output (dropped)\n";
       continue;
