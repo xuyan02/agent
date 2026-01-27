@@ -24,7 +24,7 @@ void ProfessionalAgent::Input(const std::string& input, ReplyFn reply) {
   auto on_token = [this](std::string tok) { OnToken(tok); };
   auto on_done = [this]() { OnDone(); };
 
-  if (!StartLlmRequest(model_, input, std::move(on_token), std::move(on_done))) {
+  if (!StartLlmRequest(model_, GetSystemPrompt(), input, std::move(on_token), std::move(on_done))) {
     std::cerr << "error: failed to create llm request\n";
     if (reply_) reply_("");
     reply_ = {};

@@ -12,10 +12,11 @@
 namespace {
 
 struct FakeRequest final : public agent::LlmRequest {
-  FakeRequest(std::vector<std::string>* events, std::string prompt)
-      : events_(events), prompt_(std::move(prompt)) {
+  FakeRequest(std::vector<std::string>* events, std::string system_prompt, std::string user_prompt)
+      : events_(events), system_prompt_(std::move(system_prompt)), user_prompt_(std::move(user_prompt)) {
     events_->push_back("connect");
-    events_->push_back("send:" + prompt_);
+    events_->push_back("send_system:" + system_prompt_);
+    events_->push_back("send_user:" + user_prompt_);
   }
 
   ~FakeRequest() override {
@@ -23,7 +24,8 @@ struct FakeRequest final : public agent::LlmRequest {
   }
 
   std::vector<std::string>* events_;
-  std::string prompt_;
+  std::string system_prompt_;
+  std::string user_prompt_;
 };
 
 class FakeProvider final : public agent::LlmProvider {
@@ -37,11 +39,12 @@ public:
 
   std::unique_ptr<agent::LlmRequest> Create(
       std::string model_name,
-      std::string prompt,
+      std::string system_prompt,
+      std::string user_prompt,
       agent::LlmRequest::OnToken /*on_token*/,
       agent::LlmRequest::OnDone /*on_done*/) override {
     events_->push_back("provider_create:" + name_ + ":" + model_name);
-    return std::make_unique<FakeRequest>(events_, std::move(prompt));
+    return std::make_unique<FakeRequest>(events_, std::move(system_prompt), std::move(user_prompt));
   }
 
 private:
@@ -103,7 +106,7 @@ int main() {
   assert(ok);
 
   {
-    auto req = ctx.Create("model-x", "hello", {}, {});
+    auto req = ctx.Create("model-x", "", "hello", {}, {});
     assert(req != nullptr);
   }
 
@@ -111,7 +114,8 @@ int main() {
       "factory_create:fake1:model-x",
       "provider_create:fake1:model-x",
       "connect",
-      "send:hello",
+      "send_system:",
+      "send_user:hello",
       "disconnect",
   };
 

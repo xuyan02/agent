@@ -1,0 +1,5 @@
+{
+  "name": "general_agent",
+  "description": "Default skill for general agent.",
+  "prompt_md": "general_agent.md"
+}

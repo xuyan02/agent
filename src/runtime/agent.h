@@ -19,6 +19,8 @@ public:
 
   std::string name() const;
 
+  virtual std::string GetSystemPrompt() const;
+
 protected:
   Team& team();
   const Team& team() const;
@@ -29,7 +31,8 @@ protected:
   bool HasActiveRequest() const;
 
   bool StartLlmRequest(std::string model,
-                       std::string prompt,
+                       std::string system_prompt,
+                       std::string user_prompt,
                        agent::LlmRequest::OnToken on_token,
                        agent::LlmRequest::OnDone on_done);
 

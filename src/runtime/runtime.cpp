@@ -17,16 +17,23 @@ static std::string Trim(std::string s) {
   return s.substr(b, e - b);
 }
 
-Runtime::Runtime(agent::IConsole& console, std::unique_ptr<agent::LlmContext> llm)
+Runtime::Runtime(agent::IConsole& console,
+                 std::unique_ptr<agent::LlmContext> llm,
+                 std::filesystem::path project_root)
     : console_(console), llm_(std::move(llm)) {
   if (!llm_) {
     std::cerr << "error: runtime created without llm\n";
   }
+
+  const auto skills_dir = std::move(project_root) / "skills";
+  skills_.LoadFromDir(skills_dir);
 }
 
 agent::LlmContext& Runtime::llm() { return *llm_; }
 
 const agent::LlmContext& Runtime::llm() const { return *llm_; }
+
+const SkillRegistry& Runtime::skills() const { return skills_; }
 
 void Runtime::SetTeam(std::unique_ptr<Team> team) { team_ = std::move(team); }
 

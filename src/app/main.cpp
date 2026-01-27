@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
     return 3;
   }
 
-  agent::Runtime runtime(console, std::move(llm));
+  agent::Runtime runtime(console, std::move(llm), cfg->project_root);
 
   // Prototype: load team from repo config.
   auto team = agent::Team::Load(runtime,

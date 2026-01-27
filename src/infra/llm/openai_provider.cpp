@@ -67,7 +67,8 @@ static std::string JsonEscapeString(const std::string& s) {
 OpenAIRequest::OpenAIRequest(std::string base_url,
                              std::string api_key,
                              std::string model_name,
-                             std::string prompt,
+                             std::string system_prompt,
+                             std::string user_prompt,
                              OnToken on_token,
                              OnDone on_done)
     : http_(),
@@ -87,11 +88,14 @@ OpenAIRequest::OpenAIRequest(std::string base_url,
   req.headers.push_back({"Accept", "text/event-stream"});
   req.headers.push_back({"Authorization", "Bearer " + api_key_});
 
-  // NOTE: minimal JSON; prompt must be escaped.
-  const std::string escaped_prompt = JsonEscapeString(prompt);
+  // NOTE: minimal JSON; prompts must be escaped.
+  const std::string escaped_system = JsonEscapeString(system_prompt);
+  const std::string escaped_user = JsonEscapeString(user_prompt);
   req.body = std::string("{\"model\":\"") + model_name_ +
-             std::string("\",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"") +
-             escaped_prompt + std::string("\"}]}");
+             std::string("\",\"stream\":true,\"messages\":[") +
+             std::string("{\"role\":\"system\",\"content\":\"") + escaped_system +
+             std::string("\"},{\"role\":\"user\",\"content\":\"") + escaped_user +
+             std::string("\"}]}");
 
   req.on_body_chunk = [this](const char* data, size_t n) {
     sse_.Feed(data, n);
@@ -160,11 +164,17 @@ bool OpenAIProvider::SupportsModel(const std::string& model_name) const {
 }
 
 std::unique_ptr<LlmRequest> OpenAIProvider::Create(std::string model_name,
-                                                     std::string prompt,
-                                                     LlmRequest::OnToken on_token,
-                                                     LlmRequest::OnDone on_done) {
-  return std::make_unique<OpenAIRequest>(base_url_, api_key_, std::move(model_name), std::move(prompt),
-                                        std::move(on_token), std::move(on_done));
+                                                 std::string system_prompt,
+                                                 std::string user_prompt,
+                                                 LlmRequest::OnToken on_token,
+                                                 LlmRequest::OnDone on_done) {
+  return std::make_unique<OpenAIRequest>(base_url_,
+                                        api_key_,
+                                        std::move(model_name),
+                                        std::move(system_prompt),
+                                        std::move(user_prompt),
+                                        std::move(on_token),
+                                        std::move(on_done));
 }
 
 } // namespace agent

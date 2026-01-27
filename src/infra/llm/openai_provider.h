@@ -16,7 +16,8 @@ public:
   OpenAIRequest(std::string base_url,
                 std::string api_key,
                 std::string model_name,
-                std::string prompt,
+                std::string system_prompt,
+                std::string user_prompt,
                 OnToken on_token,
                 OnDone on_done);
 
@@ -48,9 +49,10 @@ public:
   std::string Name() const override { return name_; }
   bool SupportsModel(const std::string& model_name) const override;
   std::unique_ptr<LlmRequest> Create(std::string model_name,
-                                    std::string prompt,
-                                    LlmRequest::OnToken on_token,
-                                    LlmRequest::OnDone on_done) override;
+                                     std::string system_prompt,
+                                     std::string user_prompt,
+                                     LlmRequest::OnToken on_token,
+                                     LlmRequest::OnDone on_done) override;
 
 private:
   std::string name_;

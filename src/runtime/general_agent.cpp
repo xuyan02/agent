@@ -24,17 +24,33 @@ void GeneralAgent::Input(const Message& msg) {
   TryStartRequest();
 }
 
+std::string GeneralAgent::GetSystemPrompt() const {
+  const auto* s = runtime().skills().Find("general_agent");
+  if (!s) {
+    std::cerr << "error: missing default skill: general_agent\n";
+    return {};
+  }
+
+  std::string out;
+  out += "[Skill: general_agent]\n";
+  out += s->prompt_md;
+  if (!out.empty() && out.back() != '\n') out.push_back('\n');
+  out += "\n---\n\n";
+  return out;
+}
+
 void GeneralAgent::TryStartRequest() {
   if (HasActiveRequest()) return;
   if (queue_.empty()) return;
 
-  const std::string prompt = agent::BuildAgentBatchInput(&queue_);
+  const std::string user_prompt = agent::BuildAgentBatchInput(&queue_);
+  const std::string system_prompt = GetSystemPrompt();
 
   auto on_token = [this](std::string tok) { OnToken(tok); };
 
   auto on_done = [this]() { OnRequestDone(); };
 
-  if (!StartLlmRequest(model_, prompt, std::move(on_token), std::move(on_done))) {
+  if (!StartLlmRequest(model_, system_prompt, user_prompt, std::move(on_token), std::move(on_done))) {
     std::cerr << "error: failed to create llm request\n";
     return;
   }

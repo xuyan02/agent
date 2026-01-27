@@ -17,6 +17,8 @@ public:
                std::string model);
   ~GeneralAgent() override;
 
+  std::string GetSystemPrompt() const override;
+
   void Input(const Message& msg);
 
 private:

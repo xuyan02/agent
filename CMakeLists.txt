@@ -21,6 +21,7 @@ add_library(cpp_agent_lib
   src/runtime/professional_agent.cpp
   src/runtime/runtime.cpp
   src/runtime/team.cpp
+  src/runtime/skill_registry.cpp
 
   src/infra/http/openai_client.cpp
   src/infra/http_async/async_client.cc
@@ -181,6 +182,13 @@ if(CPP_AGENT_BUILD_TESTS)
   add_executable(cpp-agent-tests-professional-agent
     tests/test_professional_agent.cpp
   )
+
+  add_executable(cpp-agent-tests-skill-registry
+    tests/test_skill_registry.cpp
+  )
+  target_link_libraries(cpp-agent-tests-skill-registry PRIVATE cpp_agent_lib)
+  target_compile_options(cpp-agent-tests-skill-registry PRIVATE -fno-exceptions -g)
+  add_test(NAME cpp-agent-tests-skill-registry COMMAND cpp-agent-tests-skill-registry)
   target_link_libraries(cpp-agent-tests-professional-agent PRIVATE cpp_agent_lib)
   target_compile_options(cpp-agent-tests-professional-agent PRIVATE -fno-exceptions -g)
   add_test(NAME cpp-agent-tests-professional-agent COMMAND cpp-agent-tests-professional-agent)

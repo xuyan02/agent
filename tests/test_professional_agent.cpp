@@ -39,10 +39,11 @@ public:
   bool SupportsModel(const std::string& model) const override { return model == "m"; }
 
   std::unique_ptr<agent::LlmRequest> Create(std::string /*model_name*/,
-                                           std::string prompt,
+                                           std::string /*system_prompt*/,
+                                           std::string user_prompt,
                                            agent::LlmRequest::OnToken on_token,
                                            agent::LlmRequest::OnDone on_done) override {
-    return std::make_unique<ImmediateRequest>("echo:" + prompt, std::move(on_token), std::move(on_done));
+    return std::make_unique<ImmediateRequest>("echo:" + user_prompt, std::move(on_token), std::move(on_done));
   }
 };
 
@@ -54,7 +55,7 @@ int main() {
   auto llm = std::make_unique<agent::LlmContext>();
   llm->Register(std::make_unique<FakeProvider>());
 
-  agent::Runtime runtime(console, std::move(llm));
+  agent::Runtime runtime(console, std::move(llm), std::filesystem::current_path());
   auto team = std::make_unique<agent::Team>(runtime, "leader");
 
   agent::ProfessionalAgent a(*team, "pro", "m");

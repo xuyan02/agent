@@ -25,9 +25,10 @@ public:
   // Creates a request for the given model. Returns nullptr if no provider
   // supports the model.
   std::unique_ptr<LlmRequest> Create(std::string model_name,
-                                    std::string prompt,
-                                    LlmRequest::OnToken on_token,
-                                    LlmRequest::OnDone on_done);
+                                     std::string system_prompt,
+                                     std::string user_prompt,
+                                     LlmRequest::OnToken on_token,
+                                     LlmRequest::OnDone on_done);
 
   const LlmProviderFactory* FindProviderFactory(const std::string& provider_name) const;
 

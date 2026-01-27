@@ -33,7 +33,8 @@ const LlmProviderFactory* LlmContext::FindProviderFactory(const std::string& pro
 }
 
 std::unique_ptr<LlmRequest> LlmContext::Create(std::string model_name,
-                                              std::string prompt,
+                                              std::string system_prompt,
+                                              std::string user_prompt,
                                               LlmRequest::OnToken on_token,
                                               LlmRequest::OnDone on_done) {
   if (DebugLlm()) {
@@ -47,7 +48,10 @@ std::unique_ptr<LlmRequest> LlmContext::Create(std::string model_name,
     if (DebugLlm()) {
       std::cerr << "[cpp-agent.llm] selected provider name=" << provider->Name() << std::endl;
     }
-    return provider->Create(std::move(model_name), std::move(prompt), std::move(on_token),
+    return provider->Create(std::move(model_name),
+                            std::move(system_prompt),
+                            std::move(user_prompt),
+                            std::move(on_token),
                             std::move(on_done));
   }
 

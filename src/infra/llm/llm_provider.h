@@ -22,7 +22,8 @@ public:
 
   // Must create a request that connects + sends in its constructor.
   virtual std::unique_ptr<LlmRequest> Create(std::string model_name,
-                                             std::string prompt,
+                                             std::string system_prompt,
+                                             std::string user_prompt,
                                              LlmRequest::OnToken on_token,
                                              LlmRequest::OnDone on_done) = 0;
 
