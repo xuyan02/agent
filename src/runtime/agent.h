@@ -23,6 +23,7 @@ public:
   virtual std::string GetSystemPrompt() const;
   virtual std::vector<Tool> GetTools();
   virtual std::vector<std::string> GetActiveTools() const;
+  virtual std::vector<std::string> GetActiveSkills() const;
 
 protected:
   Team& team();

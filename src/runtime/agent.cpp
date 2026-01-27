@@ -27,6 +27,8 @@ std::vector<Tool> Agent::GetTools() { return {}; }
 
 std::vector<std::string> Agent::GetActiveTools() const { return {}; }
 
+std::vector<std::string> Agent::GetActiveSkills() const { return {}; }
+
 bool Agent::StartLlmRequest(std::string model,
                             std::string system_prompt,
                             std::string user_prompt,

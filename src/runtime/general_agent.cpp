@@ -30,8 +30,7 @@ void GeneralAgent::Input(const Message& msg) {
 std::string GeneralAgent::GetSystemPrompt() const {
   std::string out;
 
-  const char* default_skills[] = {"general_agent", "plan"};
-  for (const char* skill_name : default_skills) {
+  for (const auto& skill_name : GetActiveSkills()) {
     const auto* s = runtime().skills().Find(skill_name);
     if (!s) {
       std::cerr << "error: missing default skill: " << skill_name << "\n";
@@ -64,11 +63,14 @@ std::vector<Tool> GeneralAgent::GetTools() {
   return {t};
 }
 
+std::vector<std::string> GeneralAgent::GetActiveSkills() const {
+  return {"general_agent", "plan"};
+}
+
 std::vector<std::string> GeneralAgent::GetActiveTools() const {
   std::vector<std::string> out;
 
-  const char* default_skills[] = {"general_agent", "plan"};
-  for (const char* skill_name : default_skills) {
+  for (const auto& skill_name : GetActiveSkills()) {
     const auto* s = runtime().skills().Find(skill_name);
     if (!s) continue;
 

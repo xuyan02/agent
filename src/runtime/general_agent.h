@@ -22,6 +22,7 @@ public:
   std::vector<Tool> GetTools() override;
 
   std::vector<std::string> GetActiveTools() const override;
+  std::vector<std::string> GetActiveSkills() const override;
 
   void Input(const Message& msg);
 
