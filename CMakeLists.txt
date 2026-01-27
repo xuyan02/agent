@@ -201,6 +201,13 @@ if(CPP_AGENT_BUILD_TESTS)
   target_link_libraries(cpp-agent-tests-skill-registry PRIVATE cpp_agent_lib)
   target_compile_options(cpp-agent-tests-skill-registry PRIVATE -fno-exceptions -g)
   add_test(NAME cpp-agent-tests-skill-registry COMMAND cpp-agent-tests-skill-registry)
+
+  add_executable(cpp-agent-tests-skill-tools
+    tests/test_skill_tools.cpp
+  )
+  target_link_libraries(cpp-agent-tests-skill-tools PRIVATE cpp_agent_lib)
+  target_compile_options(cpp-agent-tests-skill-tools PRIVATE -fno-exceptions -g)
+  add_test(NAME cpp-agent-tests-skill-tools COMMAND cpp-agent-tests-skill-tools)
   target_link_libraries(cpp-agent-tests-professional-agent PRIVATE cpp_agent_lib)
   target_compile_options(cpp-agent-tests-professional-agent PRIVATE -fno-exceptions -g)
   add_test(NAME cpp-agent-tests-professional-agent COMMAND cpp-agent-tests-professional-agent)

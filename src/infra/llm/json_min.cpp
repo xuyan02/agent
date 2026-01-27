@@ -180,4 +180,14 @@ bool parse_string_array(const std::string& arr, std::vector<std::string>* out) {
   return true;
 }
 
+bool extract_string_array_field(const std::string& obj,
+                               const std::string& key,
+                               std::vector<std::string>* out) {
+  if (!out) return false;
+
+  std::string raw;
+  if (!extract_raw_field(obj, key, &raw)) return false;
+  return parse_string_array(raw, out);
+}
+
 } // namespace agent

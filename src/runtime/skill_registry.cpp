@@ -42,6 +42,7 @@ bool SkillRegistry::LoadFromDir(const std::filesystem::path& skills_dir) {
     std::string name;
     std::string description;
     std::string prompt_md_rel;
+    std::vector<std::string> tools;
 
     if (!agent::extract_string_field(json, "name", &name) || name.empty()) {
       std::cerr << "error: skill json missing name: " << ent.path().string() << "\n";
@@ -55,6 +56,12 @@ bool SkillRegistry::LoadFromDir(const std::filesystem::path& skills_dir) {
         prompt_md_rel.empty()) {
       std::cerr << "error: skill json missing prompt_md: " << ent.path().string() << "\n";
       continue;
+    }
+
+    // Optional: tools[]
+    // NOTE: json_min has no array support; keep this purpose-built for string arrays.
+    if (!agent::extract_string_array_field(json, "tools", &tools)) {
+      tools.clear();
     }
 
     if (by_name_.find(name) != by_name_.end()) {
@@ -74,6 +81,7 @@ bool SkillRegistry::LoadFromDir(const std::filesystem::path& skills_dir) {
     s.name = std::move(name);
     s.description = std::move(description);
     s.prompt_md = std::move(prompt_md);
+    s.tools = std::move(tools);
     s.json_path = PathToString(ent.path());
     s.md_path = PathToString(md_path);
 

@@ -8,6 +8,7 @@
 
 #include "dust/message_loop/message_loop.h"
 
+#include <algorithm>
 #include <cctype>
 #include <iostream>
 #include <utility>
@@ -27,22 +28,29 @@ void GeneralAgent::Input(const Message& msg) {
 }
 
 std::string GeneralAgent::GetSystemPrompt() const {
-  const auto* s = runtime().skills().Find("general_agent");
-  if (!s) {
-    std::cerr << "error: missing default skill: general_agent\n";
-    return {};
+  std::string out;
+
+  const char* default_skills[] = {"general_agent", "plan"};
+  for (const char* skill_name : default_skills) {
+    const auto* s = runtime().skills().Find(skill_name);
+    if (!s) {
+      std::cerr << "error: missing default skill: " << skill_name << "\n";
+      continue;
+    }
+
+    out += "[Skill: ";
+    out += s->name;
+    out += "]\n";
+    out += s->prompt_md;
+    if (!out.empty() && out.back() != '\n') out.push_back('\n');
+    out += "\n---\n\n";
   }
 
-  std::string out;
-  out += "[Skill: general_agent]\n";
-  out += s->prompt_md;
-  if (!out.empty() && out.back() != '\n') out.push_back('\n');
-
-  // Inject current plan into system prompt every round.
-  out += "\n---\n\n";
+  // Keep plan state visible (the plan skill teaches how to use the tool).
   out += plan2_.RenderMarkdown();
   if (!out.empty() && out.back() != '\n') out.push_back('\n');
   out += "\n---\n\n";
+
   return out;
 }
 
@@ -57,7 +65,21 @@ std::vector<Tool> GeneralAgent::GetTools() {
 }
 
 std::vector<std::string> GeneralAgent::GetActiveTools() const {
-  return {"plan"};
+  std::vector<std::string> out;
+
+  const char* default_skills[] = {"general_agent", "plan"};
+  for (const char* skill_name : default_skills) {
+    const auto* s = runtime().skills().Find(skill_name);
+    if (!s) continue;
+
+    for (const auto& t : s->tools) {
+      if (t.empty()) continue;
+      if (std::find(out.begin(), out.end(), t) != out.end()) continue;
+      out.push_back(t);
+    }
+  }
+
+  return out;
 }
 
 void GeneralAgent::TryStartRequest() {

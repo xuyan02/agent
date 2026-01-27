@@ -1,0 +1,6 @@
+{
+  "name": "plan",
+  "description": "Teach the LLM how to create and maintain a structured plan using the plan tool.",
+  "prompt_md": "plan.md",
+  "tools": ["plan"]
+}
