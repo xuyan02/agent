@@ -86,16 +86,71 @@ std::vector<std::string> GeneralAgent::GetActiveTools() const {
 
 void GeneralAgent::TryStartRequest() {
   if (HasActiveRequest()) return;
+  if (!pending_tool_calls_.empty()) return;
   if (queue_.empty()) return;
+
+  // Continue conversation history across batches.
+  out_buf_.clear();
+  round_mode_ = RoundMode::kUnknown;
 
   const std::string user_prompt = agent::BuildAgentBatchInput(&queue_);
   const std::string system_prompt = GetSystemPrompt();
 
-  auto on_token = [this](std::string tok) { OnToken(tok); };
+  // Ensure a single system message at the beginning.
+  if (llm_history_.empty() || llm_history_.front().role != LlmRole::kSystem) {
+    llm_history_.insert(llm_history_.begin(), {.role = LlmRole::kSystem, .content = system_prompt});
+  } else {
+    llm_history_.front().content = system_prompt;
+  }
+
+  llm_history_.push_back({.role = LlmRole::kUser, .content = user_prompt});
+  TrimHistory();
+
+  StartRound(llm_history_);
+}
+
+void GeneralAgent::TrimHistory() {
+  if (llm_history_.size() <= max_history_messages_) return;
+  if (llm_history_.empty()) return;
+
+  // Keep the first system message, drop the oldest tail messages.
+  const LlmMessage sys = llm_history_.front();
+  std::vector<LlmMessage> kept;
+  kept.reserve(max_history_messages_);
+  kept.push_back(sys);
+
+  const size_t want_tail = max_history_messages_ - 1;
+  if (llm_history_.size() > 1) {
+    const size_t start = llm_history_.size() - want_tail;
+    for (size_t i = start; i < llm_history_.size(); i++) kept.push_back(llm_history_[i]);
+  }
+
+  llm_history_ = std::move(kept);
+}
+
+void GeneralAgent::StartRound(std::vector<LlmMessage> msgs) {
+  if (HasActiveRequest()) return;
+
+  round_mode_ = RoundMode::kUnknown;
+
+  auto on_token = [this](std::string tok) {
+    if (round_mode_ == RoundMode::kUnknown) round_mode_ = RoundMode::kAssistantText;
+    if (round_mode_ != RoundMode::kAssistantText) return;
+    OnToken(tok);
+  };
+
+  auto on_tool_calls = [this](std::vector<LlmToolCall> tool_calls) {
+    round_mode_ = RoundMode::kToolCall;
+    OnToolCalls(std::move(tool_calls));
+  };
 
   auto on_done = [this]() { OnRequestDone(); };
 
-  if (!StartLlmRequest(model_, system_prompt, user_prompt, std::move(on_token), std::move(on_done))) {
+  if (!StartLlmRequest(model_,
+                       std::move(msgs),
+                       std::move(on_token),
+                       std::move(on_tool_calls),
+                       std::move(on_done))) {
     std::cerr << "error: failed to create llm request\n";
     return;
   }
@@ -104,6 +159,18 @@ void GeneralAgent::TryStartRequest() {
 void GeneralAgent::OnRequestDone() {
   CancelActiveRequest();
 
+  if (round_mode_ == RoundMode::kToolCall) {
+    // Tool execution / next round is driven by OnToolCalls + ExecuteNextToolCall().
+    return;
+  }
+
+  // Persist final assistant message into conversation history.
+  if (!out_buf_.empty()) {
+    llm_history_.push_back({.role = LlmRole::kAssistant, .content = out_buf_});
+    TrimHistory();
+  }
+
+  // Final round: parse once at the end.
   auto out = agent::ParseAgentMultiTargetOutput(name(), out_buf_);
   if (!out_buf_.empty() && out.empty()) {
     std::cerr << "error: agent output dropped (missing @to: header). "

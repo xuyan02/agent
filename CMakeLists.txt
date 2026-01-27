@@ -17,6 +17,7 @@ add_library(cpp_agent_lib
 
   src/runtime/agent.cpp
   src/runtime/general_agent.cpp
+  src/runtime/general_agent_tool_loop.cpp
   src/runtime/message_codec.cpp
   src/runtime/professional_agent.cpp
   src/runtime/runtime.cpp
@@ -28,8 +29,10 @@ add_library(cpp_agent_lib
   src/infra/llm/llm_context.cpp
   src/infra/llm/llm_config_loader.cpp
   src/infra/llm/json_min.cpp
+  src/infra/llm/json_min_extra.cpp
   src/infra/llm/sse_parser.cpp
   src/infra/llm/openai_provider.cpp
+  src/infra/llm/openai_stream_accumulator.cpp
   src/infra/llm/openai_provider_factory.cpp
   src/infra/plan/plan_model.cpp
   src/infra/plan/plan_store.cpp
@@ -212,6 +215,13 @@ if(CPP_AGENT_BUILD_TESTS)
   target_compile_options(cpp-agent-tests-professional-agent PRIVATE -fno-exceptions -g)
   add_test(NAME cpp-agent-tests-professional-agent COMMAND cpp-agent-tests-professional-agent)
 
+  add_executable(cpp-agent-tests-general-agent-history
+    tests/test_general_agent_history.cpp
+  )
+  target_link_libraries(cpp-agent-tests-general-agent-history PRIVATE cpp_agent_lib)
+  target_compile_options(cpp-agent-tests-general-agent-history PRIVATE -fno-exceptions -g)
+  add_test(NAME cpp-agent-tests-general-agent-history COMMAND cpp-agent-tests-general-agent-history)
+
   # Tool calling disabled in streaming-only mode for now.
   # add_executable(cpp-agent-tests-agent-tool-loop
   #   tests/test_agent_tool_loop.cpp
@@ -260,5 +270,12 @@ if(CPP_AGENT_BUILD_TESTS)
   target_link_libraries(cpp-agent-tests-llm-config-loader PRIVATE cpp_agent_lib)
   target_compile_options(cpp-agent-tests-llm-config-loader PRIVATE -fno-exceptions -g)
   add_test(NAME cpp-agent-tests-llm-config-loader COMMAND cpp-agent-tests-llm-config-loader)
+
+  add_executable(cpp-agent-tests-json-min-unescape
+    tests/test_json_min_unescape.cpp
+  )
+  target_link_libraries(cpp-agent-tests-json-min-unescape PRIVATE cpp_agent_lib)
+  target_compile_options(cpp-agent-tests-json-min-unescape PRIVATE -fno-exceptions -g)
+  add_test(NAME cpp-agent-tests-json-min-unescape COMMAND cpp-agent-tests-json-min-unescape)
 
 endif()

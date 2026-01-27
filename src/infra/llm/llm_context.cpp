@@ -33,10 +33,10 @@ const LlmProviderFactory* LlmContext::FindProviderFactory(const std::string& pro
 }
 
 std::unique_ptr<LlmRequest> LlmContext::Create(std::string model_name,
-                                              std::string system_prompt,
-                                              std::string user_prompt,
+                                              std::vector<LlmMessage> messages,
                                               std::vector<agent::Tool> tools,
                                               LlmRequest::OnToken on_token,
+                                              LlmRequest::OnToolCalls on_tool_calls,
                                               LlmRequest::OnDone on_done) {
   if (DebugLlm()) {
     std::cerr << "[cpp-agent.llm] Create model=" << model_name << " providers=" << providers_.size()
@@ -50,10 +50,10 @@ std::unique_ptr<LlmRequest> LlmContext::Create(std::string model_name,
       std::cerr << "[cpp-agent.llm] selected provider name=" << provider->Name() << std::endl;
     }
     return provider->Create(std::move(model_name),
-                            std::move(system_prompt),
-                            std::move(user_prompt),
+                            std::move(messages),
                             std::move(tools),
                             std::move(on_token),
+                            std::move(on_tool_calls),
                             std::move(on_done));
   }
 

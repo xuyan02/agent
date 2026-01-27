@@ -1,4 +1,5 @@
 #include "infra/llm/llm_config_loader.h"
+#include "infra/llm/llm_message.h"
 #include "infra/llm/llm_provider_factory.h"
 
 #include <cassert>
@@ -39,12 +40,20 @@ public:
 
   std::unique_ptr<agent::LlmRequest> Create(
       std::string model_name,
-      std::string system_prompt,
-      std::string user_prompt,
+      std::vector<agent::LlmMessage> messages,
       std::vector<agent::Tool> /*tools*/,
       agent::LlmRequest::OnToken /*on_token*/,
+      agent::LlmRequest::OnToolCalls /*on_tool_calls*/,
       agent::LlmRequest::OnDone /*on_done*/) override {
     events_->push_back("provider_create:" + name_ + ":" + model_name);
+
+    std::string system_prompt;
+    std::string user_prompt;
+    for (const auto& m : messages) {
+      if (m.role == agent::LlmRole::kSystem) system_prompt = m.content;
+      if (m.role == agent::LlmRole::kUser) user_prompt = m.content;
+    }
+
     return std::make_unique<FakeRequest>(events_, std::move(system_prompt), std::move(user_prompt));
   }
 
@@ -107,7 +116,10 @@ int main() {
   assert(ok);
 
   {
-    auto req = ctx.Create("model-x", "", "hello", std::vector<agent::Tool>{}, {}, {});
+    std::vector<agent::LlmMessage> msgs;
+    msgs.push_back({.role = agent::LlmRole::kSystem, .content = ""});
+    msgs.push_back({.role = agent::LlmRole::kUser, .content = "hello"});
+    auto req = ctx.Create("model-x", std::move(msgs), std::vector<agent::Tool>{}, {}, {}, {});
     assert(req != nullptr);
   }
 

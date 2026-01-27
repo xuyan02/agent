@@ -4,6 +4,8 @@
 
 #include "dust/message_loop/message_loop.h"
 
+#include "infra/llm/llm_message.h"
+
 #include <sstream>
 
 namespace agent {
@@ -87,14 +89,17 @@ void Agent::handle_user_input(const std::string& input) {
   // NOTE: This uses a minimal prompt path. We'll map full conversation+tools next.
   refresh_system_prompt_from_plan();
 
-  std::string system_prompt;
-  if (auto* sys = conv_.first_system_message(); sys) system_prompt = sys->content;
+  std::vector<LlmMessage> msgs;
+  if (auto* sys = conv_.first_system_message(); sys) {
+    msgs.push_back({.role = LlmRole::kSystem, .content = sys->content});
+  }
+  msgs.push_back({.role = LlmRole::kUser, .content = input});
 
   active_req_ = llm_.Create(llm_options_.model,
-                            std::move(system_prompt),
-                            input,
+                            std::move(msgs),
                             {},
                             std::move(on_token),
+                            agent::LlmRequest::OnToolCalls{},
                             std::move(on_done));
   if (!active_req_) {
     console_.PrintLine("error: failed to create llm request");

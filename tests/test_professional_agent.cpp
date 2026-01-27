@@ -1,5 +1,6 @@
 #include "runtime/professional_agent.h"
 
+#include "infra/llm/llm_message.h"
 #include "runtime/runtime.h"
 #include "runtime/team.h"
 
@@ -39,11 +40,15 @@ public:
   bool SupportsModel(const std::string& model) const override { return model == "m"; }
 
   std::unique_ptr<agent::LlmRequest> Create(std::string /*model_name*/,
-                                           std::string /*system_prompt*/,
-                                           std::string user_prompt,
+                                           std::vector<agent::LlmMessage> messages,
                                            std::vector<agent::Tool> /*tools*/,
                                            agent::LlmRequest::OnToken on_token,
+                                           agent::LlmRequest::OnToolCalls /*on_tool_calls*/,
                                            agent::LlmRequest::OnDone on_done) override {
+    std::string user_prompt;
+    for (const auto& m : messages) {
+      if (m.role == agent::LlmRole::kUser) user_prompt = m.content;
+    }
     return std::make_unique<ImmediateRequest>("echo:" + user_prompt, std::move(on_token), std::move(on_done));
   }
 };

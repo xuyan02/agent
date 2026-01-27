@@ -1,5 +1,6 @@
 #pragma once
 
+#include "infra/llm/llm_message.h"
 #include "infra/llm/llm_request.h"
 #include "runtime/tool.h"
 
@@ -35,9 +36,9 @@ protected:
   bool HasActiveRequest() const;
 
   bool StartLlmRequest(std::string model,
-                       std::string system_prompt,
-                       std::string user_prompt,
+                       std::vector<LlmMessage> messages,
                        agent::LlmRequest::OnToken on_token,
+                       agent::LlmRequest::OnToolCalls on_tool_calls,
                        agent::LlmRequest::OnDone on_done);
 
   void CancelActiveRequest();

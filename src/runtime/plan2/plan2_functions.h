@@ -9,7 +9,7 @@ class PlanAddTasksFunction final : public agent::Function {
 public:
   explicit PlanAddTasksFunction(PlanModel* plan);
   const agent::FunctionSpec& spec() const override;
-  bool Invoke(std::string arguments_json, std::string* out_result_json, std::string* out_error) override;
+  void InvokeAsync(std::string arguments_json, OnDone done) override;
 
 private:
   PlanModel* plan_;
@@ -20,7 +20,7 @@ class PlanSetStatusFunction final : public agent::Function {
 public:
   explicit PlanSetStatusFunction(PlanModel* plan);
   const agent::FunctionSpec& spec() const override;
-  bool Invoke(std::string arguments_json, std::string* out_result_json, std::string* out_error) override;
+  void InvokeAsync(std::string arguments_json, OnDone done) override;
 
 private:
   PlanModel* plan_;
@@ -31,7 +31,7 @@ class PlanRemoveTaskFunction final : public agent::Function {
 public:
   explicit PlanRemoveTaskFunction(PlanModel* plan);
   const agent::FunctionSpec& spec() const override;
-  bool Invoke(std::string arguments_json, std::string* out_result_json, std::string* out_error) override;
+  void InvokeAsync(std::string arguments_json, OnDone done) override;
 
 private:
   PlanModel* plan_;

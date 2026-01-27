@@ -30,17 +30,17 @@ std::vector<std::string> Agent::GetActiveTools() const { return {}; }
 std::vector<std::string> Agent::GetActiveSkills() const { return {}; }
 
 bool Agent::StartLlmRequest(std::string model,
-                            std::string system_prompt,
-                            std::string user_prompt,
+                            std::vector<LlmMessage> messages,
                             agent::LlmRequest::OnToken on_token,
+                            agent::LlmRequest::OnToolCalls on_tool_calls,
                             agent::LlmRequest::OnDone on_done) {
   if (active_req_) return false;
 
   active_req_ = runtime().llm().Create(std::move(model),
-                                      std::move(system_prompt),
-                                      std::move(user_prompt),
+                                      std::move(messages),
                                       GetTools(),
                                       std::move(on_token),
+                                      std::move(on_tool_calls),
                                       std::move(on_done));
   return active_req_ != nullptr;
 }

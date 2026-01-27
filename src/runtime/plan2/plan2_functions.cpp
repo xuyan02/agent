@@ -316,11 +316,14 @@ PlanAddTasksFunction::PlanAddTasksFunction(PlanModel* plan) : plan_(plan) {
 
 const agent::FunctionSpec& PlanAddTasksFunction::spec() const { return spec_; }
 
-bool PlanAddTasksFunction::Invoke(std::string arguments_json, std::string* out_result_json, std::string* out_error) {
+void PlanAddTasksFunction::InvokeAsync(std::string arguments_json, OnDone done) {
+  std::string out_result_json;
+  std::string out_error;
   const auto tasks = extract_tasks_array_objects(arguments_json);
   if (tasks.empty()) {
-    *out_error = "Missing argument: tasks";
-    return false;
+    out_error = "Missing argument: tasks";
+    std::move(done)("", std::move(out_error));
+    return;
   }
 
   std::vector<AddTaskInput> inputs;
@@ -343,8 +346,9 @@ bool PlanAddTasksFunction::Invoke(std::string arguments_json, std::string* out_r
 
   const AddTasksResult r = plan_->AddTasks(inputs);
   if (!r.error.empty()) {
-    *out_error = r.error;
-    return false;
+    out_error = r.error;
+    std::move(done)("", std::move(out_error));
+    return;
   }
 
   std::ostringstream oss;
@@ -365,8 +369,8 @@ bool PlanAddTasksFunction::Invoke(std::string arguments_json, std::string* out_r
 
   oss << '}';
 
-  *out_result_json = oss.str();
-  return true;
+  out_result_json = oss.str();
+  std::move(done)(std::move(out_result_json), "");
 }
 
 PlanSetStatusFunction::PlanSetStatusFunction(PlanModel* plan) : plan_(plan) {
@@ -386,26 +390,31 @@ PlanSetStatusFunction::PlanSetStatusFunction(PlanModel* plan) : plan_(plan) {
 
 const agent::FunctionSpec& PlanSetStatusFunction::spec() const { return spec_; }
 
-bool PlanSetStatusFunction::Invoke(std::string arguments_json, std::string* out_result_json, std::string* out_error) {
+void PlanSetStatusFunction::InvokeAsync(std::string arguments_json, OnDone done) {
+  std::string out_result_json;
+  std::string out_error;
   const std::string task_id = extract_json_string_or_empty(arguments_json, "task_id");
   if (task_id.empty()) {
-    *out_error = "Missing argument: task_id";
-    return false;
+    out_error = "Missing argument: task_id";
+    std::move(done)("", std::move(out_error));
+    return;
   }
 
   const std::string status_s = extract_json_string_or_empty(arguments_json, "status");
   Status st;
   if (!parse_status(status_s, &st)) {
-    *out_error = "Invalid argument: status";
-    return false;
+    out_error = "Invalid argument: status";
+    std::move(done)("", std::move(out_error));
+    return;
   }
 
   const std::string block_reason = extract_json_string_or_empty(arguments_json, "block_reason");
 
   const SetStatusResult r = plan_->SetStatus(task_id, st, block_reason);
   if (!r.error.empty()) {
-    *out_error = r.error;
-    return false;
+    out_error = r.error;
+    std::move(done)("", std::move(out_error));
+    return;
   }
 
   std::ostringstream oss;
@@ -442,8 +451,8 @@ bool PlanSetStatusFunction::Invoke(std::string arguments_json, std::string* out_
 
   oss << '}';
 
-  *out_result_json = oss.str();
-  return true;
+  out_result_json = oss.str();
+  std::move(done)(std::move(out_result_json), "");
 }
 
 PlanRemoveTaskFunction::PlanRemoveTaskFunction(PlanModel* plan) : plan_(plan) {
@@ -461,17 +470,21 @@ PlanRemoveTaskFunction::PlanRemoveTaskFunction(PlanModel* plan) : plan_(plan) {
 
 const agent::FunctionSpec& PlanRemoveTaskFunction::spec() const { return spec_; }
 
-bool PlanRemoveTaskFunction::Invoke(std::string arguments_json, std::string* out_result_json, std::string* out_error) {
+void PlanRemoveTaskFunction::InvokeAsync(std::string arguments_json, OnDone done) {
+  std::string out_result_json;
+  std::string out_error;
   const std::string task_id = extract_json_string_or_empty(arguments_json, "task_id");
   if (task_id.empty()) {
-    *out_error = "Missing argument: task_id";
-    return false;
+    out_error = "Missing argument: task_id";
+    std::move(done)("", std::move(out_error));
+    return;
   }
 
   const RemoveTaskResult r = plan_->RemoveTask(task_id);
   if (!r.error.empty()) {
-    *out_error = r.error;
-    return false;
+    out_error = r.error;
+    std::move(done)("", std::move(out_error));
+    return;
   }
 
   std::ostringstream oss;
@@ -487,8 +500,8 @@ bool PlanRemoveTaskFunction::Invoke(std::string arguments_json, std::string* out
 
   oss << '}';
 
-  *out_result_json = oss.str();
-  return true;
+  out_result_json = oss.str();
+  std::move(done)(std::move(out_result_json), "");
 }
 
 } // namespace agent::plan2

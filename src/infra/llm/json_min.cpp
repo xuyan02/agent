@@ -1,14 +1,11 @@
 #include "infra/llm/json_min.h"
 
 namespace agent {
-namespace {
 
 size_t skip_ws(const std::string& s, size_t i) {
   while (i < s.size() && (s[i] == ' ' || s[i] == '\n' || s[i] == '\t' || s[i] == '\r')) i++;
   return i;
 }
-
-} // namespace
 
 bool extract_top_level_array(const std::string& json, const std::string& key, std::string* out) {
   if (!out) return false;

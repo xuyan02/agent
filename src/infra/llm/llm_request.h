@@ -1,9 +1,13 @@
 #pragma once
 
 #include <memory>
+
 #include "dust/functional/closure.h"
 
+#include "infra/llm/llm_message.h"
+
 #include <string>
+#include <vector>
 
 namespace agent {
 
@@ -16,6 +20,11 @@ namespace agent {
 class LlmRequest {
 public:
   using OnToken = dust::Function<void(std::string)>;
+
+  // Called exactly once at the end of a round if the round produced tool calls.
+  // The tool calls must be complete (arguments_json fully assembled).
+  using OnToolCalls = dust::OnceFunction<void(std::vector<LlmToolCall> tool_calls)>;
+
   using OnDone = dust::OnceFunction<void()>;
 
   virtual ~LlmRequest() = default;

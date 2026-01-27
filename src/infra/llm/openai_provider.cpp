@@ -3,6 +3,7 @@
 #include "dust/message_loop/message_loop.h"
 
 #include "infra/llm/json_min.h"
+#include "infra/llm/openai_stream_accumulator.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -68,17 +69,19 @@ static std::string JsonEscapeString(const std::string& s) {
 OpenAIRequest::OpenAIRequest(std::string base_url,
                              std::string api_key,
                              std::string model_name,
-                             std::string system_prompt,
-                             std::string user_prompt,
+                             std::vector<LlmMessage> messages,
                              std::vector<agent::Tool> tools,
                              OnToken on_token,
+                             OnToolCalls on_tool_calls,
                              OnDone on_done)
     : http_(),
       base_url_(std::move(base_url)),
       api_key_(std::move(api_key)),
       model_name_(std::move(model_name)),
       on_token_(std::move(on_token)),
+      on_tool_calls_(std::move(on_tool_calls)),
       on_done_(std::move(on_done)) {
+  acc_.Reset();
   if (DebugLlm()) {
     std::cerr << "[cpp-agent.llm] OpenAIRequest ctor base_url=" << base_url_ << " model="
               << model_name_ << std::endl;
@@ -90,9 +93,6 @@ OpenAIRequest::OpenAIRequest(std::string base_url,
   req.headers.push_back({"Accept", "text/event-stream"});
   req.headers.push_back({"Authorization", "Bearer " + api_key_});
 
-  // NOTE: minimal JSON; prompts must be escaped.
-  const std::string escaped_system = JsonEscapeString(system_prompt);
-  const std::string escaped_user = JsonEscapeString(user_prompt);
   std::string tools_json;
   if (!tools.empty()) {
     // Expand Tool->Functions into OpenAI chat.completions tools=[{type:function,function:{...}}].
@@ -115,11 +115,58 @@ OpenAIRequest::OpenAIRequest(std::string base_url,
     tools_json = oss.str();
   }
 
+  std::ostringstream msg_oss;
+  msg_oss << "\"messages\":[";
+
+  auto role_to_string = [](LlmRole r) -> const char* {
+    switch (r) {
+    case LlmRole::kSystem: return "system";
+    case LlmRole::kUser: return "user";
+    case LlmRole::kAssistant: return "assistant";
+    case LlmRole::kTool: return "tool";
+    }
+    return "user";
+  };
+
+  bool first_msg = true;
+  for (const auto& m : messages) {
+    if (!first_msg) msg_oss << ',';
+    first_msg = false;
+
+    msg_oss << "{\"role\":\"" << role_to_string(m.role) << "\"";
+
+    // tool message
+    if (m.role == LlmRole::kTool && m.tool_result.has_value()) {
+      msg_oss << ",\"tool_call_id\":\"" << JsonEscapeString(m.tool_result->tool_call_id) << "\"";
+    }
+
+    msg_oss << ",\"content\":\"" << JsonEscapeString(m.content) << "\"";
+
+    // assistant tool_calls
+    if (m.role == LlmRole::kAssistant && !m.tool_calls.empty()) {
+      msg_oss << ",\"tool_calls\":[";
+      bool first_tc = true;
+      for (const auto& tc : m.tool_calls) {
+        if (!first_tc) msg_oss << ',';
+        first_tc = false;
+        msg_oss << "{\"id\":\"" << JsonEscapeString(tc.id)
+                << "\",\"type\":\"function\",\"function\":{\"name\":\""
+                << JsonEscapeString(tc.name) << "\",\"arguments\":";
+
+        // Arguments must be a JSON string value in OpenAI schema.
+        msg_oss << "\"" << JsonEscapeString(tc.arguments_json) << "\"";
+        msg_oss << "}}";
+      }
+      msg_oss << ']';
+    }
+
+    msg_oss << '}';
+  }
+  msg_oss << ']';
+
   req.body = std::string("{\"model\":\"") + model_name_ +
-             std::string("\",\"stream\":true,\"messages\":[") +
-             std::string("{\"role\":\"system\",\"content\":\"") + escaped_system +
-             std::string("\"},{\"role\":\"user\",\"content\":\"") + escaped_user +
-             std::string("\"}]") + tools_json + std::string("}");
+             std::string("\",\"stream\":true,") + msg_oss.str() + tools_json +
+             std::string("}");
 
   req.on_body_chunk = [this](const char* data, size_t n) {
     sse_.Feed(data, n);
@@ -146,31 +193,20 @@ OpenAIRequest::OpenAIRequest(std::string base_url,
 OpenAIRequest::~OpenAIRequest() = default;
 
 bool OpenAIRequest::HandleSseDataLine(const std::string& data_line) {
-  if (data_line == "[DONE]") return true;
+  OpenAIStreamDelta d;
+  if (!acc_.FeedDataLine(data_line, &d)) return false;
 
-  // Extract first occurrence of "content":"..." within the SSE JSON.
-  // This is a minimal parser matching OpenAI streaming responses.
-  const std::string kKey = "\"content\":";
-  auto p = data_line.find(kKey);
-  if (p == std::string::npos) return true;
-  p += kKey.size();
-  if (p >= data_line.size() || data_line[p] != '"') return true;
-  p++;
-
-  std::string out;
-  for (; p < data_line.size(); p++) {
-    char c = data_line[p];
-    if (c == '"') break;
-    if (c == '\\') {
-      if (p + 1 >= data_line.size()) break;
-      char n = data_line[++p];
-      out.push_back(n);
-      continue;
-    }
-    out.push_back(c);
+  if (!d.content_delta.empty() && on_token_) {
+    on_token_(std::move(d.content_delta));
   }
 
-  if (!out.empty() && on_token_) on_token_(std::move(out));
+  if (d.has_finish_reason) {
+    if (acc_.HasToolCalls() && on_tool_calls_) {
+      std::move(on_tool_calls_)(acc_.BuildAssistantMessage().tool_calls);
+    }
+    return true;
+  }
+
   return true;
 }
 
@@ -188,19 +224,18 @@ bool OpenAIProvider::SupportsModel(const std::string& model_name) const {
 }
 
 std::unique_ptr<LlmRequest> OpenAIProvider::Create(std::string model_name,
-                                                 std::string system_prompt,
-                                                 std::string user_prompt,
+                                                 std::vector<LlmMessage> messages,
                                                  std::vector<agent::Tool> tools,
                                                  LlmRequest::OnToken on_token,
+                                                 LlmRequest::OnToolCalls on_tool_calls,
                                                  LlmRequest::OnDone on_done) {
-  // Tool expansion/execution is wired later; MVP only carries the interface.
   return std::make_unique<OpenAIRequest>(base_url_,
                                         api_key_,
                                         std::move(model_name),
-                                        std::move(system_prompt),
-                                        std::move(user_prompt),
+                                        std::move(messages),
                                         std::move(tools),
                                         std::move(on_token),
+                                        std::move(on_tool_calls),
                                         std::move(on_done));
 }
 

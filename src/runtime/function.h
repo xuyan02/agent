@@ -1,5 +1,7 @@
 #pragma once
 
+#include "dust/functional/closure.h"
+
 #include <memory>
 #include <string>
 
@@ -20,11 +22,14 @@ public:
 
   virtual const FunctionSpec& spec() const = 0;
 
+  using OnDone = dust::OnceFunction<void(std::string out_result_json,
+                                         std::string out_error)>;
+
   // arguments_json: JSON object string matching parameters schema.
-  // out_result_json: JSON object string.
-  virtual bool Invoke(std::string arguments_json,
-                      std::string* out_result_json,
-                      std::string* out_error) = 0;
+  // done(out_result_json, out_error)
+  // - out_result_json: JSON object string
+  // - out_error: non-empty indicates failure
+  virtual void InvokeAsync(std::string arguments_json, OnDone done) = 0;
 };
 
 using FunctionPtr = std::shared_ptr<Function>;

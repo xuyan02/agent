@@ -1,5 +1,6 @@
 #pragma once
 
+#include "infra/llm/llm_message.h"
 #include "infra/llm/llm_request.h"
 #include "runtime/tool.h"
 
@@ -24,10 +25,10 @@ public:
 
   // Must create a request that connects + sends in its constructor.
   virtual std::unique_ptr<LlmRequest> Create(std::string model_name,
-                                             std::string system_prompt,
-                                             std::string user_prompt,
+                                             std::vector<LlmMessage> messages,
                                              std::vector<agent::Tool> tools,
                                              LlmRequest::OnToken on_token,
+                                             LlmRequest::OnToolCalls on_tool_calls,
                                              LlmRequest::OnDone on_done) = 0;
 
 protected:
