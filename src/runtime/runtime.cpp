@@ -45,6 +45,20 @@ void Runtime::OnCliLine(const std::string& line) {
     return;
   }
 
+  if (line == "/plan") {
+    auto* leader = team_->Find(team_->leader());
+    if (!leader) {
+      std::cerr << "error: leader not found: " << team_->leader() << "\n";
+      return;
+    }
+    const std::string md = leader->RenderPlanMarkdown();
+    console_.Print(md);
+    if (!md.empty() && md.back() != '\n') {
+      console_.PrintLine("");
+    }
+    return;
+  }
+
   std::string target;
   std::string payload;
 

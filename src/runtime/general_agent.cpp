@@ -22,6 +22,10 @@ GeneralAgent::GeneralAgent(Team& team,
 
 GeneralAgent::~GeneralAgent() = default;
 
+std::string GeneralAgent::RenderPlanMarkdown() const {
+  return plan2_.RenderMarkdown();
+}
+
 void GeneralAgent::Input(const Message& msg) {
   queue_.push_back(msg);
   TryStartRequest();
@@ -54,13 +58,14 @@ std::string GeneralAgent::GetSystemPrompt() const {
 }
 
 std::vector<Tool> GeneralAgent::GetTools() {
-  Tool t;
-  t.id = "plan";
-  t.description = "Task planning and management";
-  t.functions.push_back(std::make_shared<agent::plan2::PlanAddTasksFunction>(&plan2_));
-  t.functions.push_back(std::make_shared<agent::plan2::PlanSetStatusFunction>(&plan2_));
-  t.functions.push_back(std::make_shared<agent::plan2::PlanRemoveTaskFunction>(&plan2_));
-  return {t};
+  Tool plan;
+  plan.id = "plan";
+  plan.description = "Task planning and management";
+  plan.functions.push_back(std::make_shared<agent::plan2::PlanAddTasksFunction>(&plan2_));
+  plan.functions.push_back(std::make_shared<agent::plan2::PlanSetStatusFunction>(&plan2_));
+  plan.functions.push_back(std::make_shared<agent::plan2::PlanRemoveTaskFunction>(&plan2_));
+
+  return {plan};
 }
 
 std::vector<std::string> GeneralAgent::GetActiveSkills() const {
@@ -87,6 +92,7 @@ std::vector<std::string> GeneralAgent::GetActiveTools() const {
 void GeneralAgent::TryStartRequest() {
   if (HasActiveRequest()) return;
   if (!pending_tool_calls_.empty()) return;
+
   if (queue_.empty()) return;
 
   // Continue conversation history across batches.
@@ -131,20 +137,46 @@ void GeneralAgent::TrimHistory() {
 void GeneralAgent::StartRound(std::vector<LlmMessage> msgs) {
   if (HasActiveRequest()) return;
 
+  std::cerr << "[cpp-agent.llm] StartRound msgs=" << msgs.size();
+  if (!msgs.empty()) {
+    std::cerr << " last.role="
+              << (msgs.back().role == LlmRole::kSystem
+                      ? "system"
+                      : (msgs.back().role == LlmRole::kUser
+                                 ? "user"
+                                 : (msgs.back().role == LlmRole::kAssistant ? "assistant" : "tool")));
+    if (msgs.back().role == LlmRole::kAssistant) {
+      std::cerr << " last.tool_calls=" << msgs.back().tool_calls.size();
+    }
+    if (msgs.back().role == LlmRole::kTool && msgs.back().tool_result.has_value()) {
+      std::cerr << " last.tool_call_id=" << msgs.back().tool_result->tool_call_id;
+    }
+  }
+  std::cerr << "\n";
+
   round_mode_ = RoundMode::kUnknown;
 
   auto on_token = [this](std::string tok) {
-    if (round_mode_ == RoundMode::kUnknown) round_mode_ = RoundMode::kAssistantText;
+    if (round_mode_ == RoundMode::kUnknown) {
+      round_mode_ = RoundMode::kAssistantText;
+      std::cerr << "[cpp-agent.llm] round mode -> assistant_text\n";
+    }
     if (round_mode_ != RoundMode::kAssistantText) return;
     OnToken(tok);
   };
 
   auto on_tool_calls = [this](std::vector<LlmToolCall> tool_calls) {
-    round_mode_ = RoundMode::kToolCall;
+    if (round_mode_ != RoundMode::kToolCall) {
+      round_mode_ = RoundMode::kToolCall;
+      std::cerr << "[cpp-agent.llm] round mode -> tool_call\n";
+    }
     OnToolCalls(std::move(tool_calls));
   };
 
   auto on_done = [this]() { OnRequestDone(); };
+
+  std::cerr << "[cpp-agent.llm] StartRound -> StartLlmRequest agent=" << name() << " this=" << this
+            << " model=" << model_ << " msgs=" << msgs.size() << "\n";
 
   if (!StartLlmRequest(model_,
                        std::move(msgs),
@@ -158,6 +190,12 @@ void GeneralAgent::StartRound(std::vector<LlmMessage> msgs) {
 
 void GeneralAgent::OnRequestDone() {
   CancelActiveRequest();
+
+  std::cerr << "[cpp-agent.llm] round done mode="
+            << (round_mode_ == RoundMode::kToolCall
+                    ? "tool_call"
+                    : (round_mode_ == RoundMode::kAssistantText ? "assistant_text" : "unknown"))
+            << "\n";
 
   if (round_mode_ == RoundMode::kToolCall) {
     // Tool execution / next round is driven by OnToolCalls + ExecuteNextToolCall().

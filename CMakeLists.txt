@@ -28,8 +28,6 @@ add_library(cpp_agent_lib
   src/infra/http_async/async_client.cc
   src/infra/llm/llm_context.cpp
   src/infra/llm/llm_config_loader.cpp
-  src/infra/llm/json_min.cpp
-  src/infra/llm/json_min_extra.cpp
   src/infra/llm/sse_parser.cpp
   src/infra/llm/openai_provider.cpp
   src/infra/llm/openai_stream_accumulator.cpp
@@ -40,6 +38,7 @@ add_library(cpp_agent_lib
   src/infra/tools/plan_toolset.cpp
   src/infra/tools/shell_tool.cpp
   src/infra/storage/json_file_storage.cpp
+  src/infra/json/json.cpp
   src/infra/console/cli_console.cpp
 
   src/runtime/plan2/plan2_model.cpp
@@ -140,6 +139,11 @@ add_subdirectory(third_party/curl EXCLUDE_FROM_ALL)
 # Allow building dust's own tests in the top-level build tree.
 set(DUST_BUILD_TESTS OFF CACHE BOOL "Build dust tests" FORCE)
 add_subdirectory(third_party/dust EXCLUDE_FROM_ALL)
+
+include(third_party/nlohmann_json.cmake)
+
+# Expose nlohmann/json headers to anything that links against cpp_agent_lib (e.g. test executables).
+target_link_libraries(cpp_agent_lib PUBLIC nlohmann_json::nlohmann_json)
 
 target_link_libraries(cpp_agent_lib PRIVATE libcurl dust)
 # curl's include directory isn't propagated via libcurl here (it's built as a subdir),
@@ -271,11 +275,26 @@ if(CPP_AGENT_BUILD_TESTS)
   target_compile_options(cpp-agent-tests-llm-config-loader PRIVATE -fno-exceptions -g)
   add_test(NAME cpp-agent-tests-llm-config-loader COMMAND cpp-agent-tests-llm-config-loader)
 
-  add_executable(cpp-agent-tests-json-min-unescape
-    tests/test_json_min_unescape.cpp
+  add_executable(cpp-agent-tests-json-parse-smoke
+    tests/test_json_parse_smoke.cpp
   )
-  target_link_libraries(cpp-agent-tests-json-min-unescape PRIVATE cpp_agent_lib)
-  target_compile_options(cpp-agent-tests-json-min-unescape PRIVATE -fno-exceptions -g)
-  add_test(NAME cpp-agent-tests-json-min-unescape COMMAND cpp-agent-tests-json-min-unescape)
+  target_link_libraries(cpp-agent-tests-json-parse-smoke PRIVATE cpp_agent_lib)
+  target_compile_options(cpp-agent-tests-json-parse-smoke PRIVATE -fno-exceptions -g)
+  add_test(NAME cpp-agent-tests-json-parse-smoke COMMAND cpp-agent-tests-json-parse-smoke)
+
+  add_executable(cpp-agent-tests-openai-stream-tool-calls-extract
+    tests/test_openai_stream_tool_calls_extract.cpp
+  )
+  target_link_libraries(cpp-agent-tests-openai-stream-tool-calls-extract PRIVATE cpp_agent_lib)
+  target_compile_options(cpp-agent-tests-openai-stream-tool-calls-extract PRIVATE -fno-exceptions -g)
+  add_test(NAME cpp-agent-tests-openai-stream-tool-calls-extract COMMAND cpp-agent-tests-openai-stream-tool-calls-extract)
+
+  add_executable(cpp-agent-tests-cli-plan-command
+    tests/test_cli_plan_command.cpp
+  )
+  target_link_libraries(cpp-agent-tests-cli-plan-command PRIVATE cpp_agent_lib)
+  target_compile_options(cpp-agent-tests-cli-plan-command PRIVATE -fno-exceptions -g)
+  add_test(NAME cpp-agent-tests-cli-plan-command COMMAND cpp-agent-tests-cli-plan-command)
+
 
 endif()

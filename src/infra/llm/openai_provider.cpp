@@ -2,8 +2,10 @@
 
 #include "dust/message_loop/message_loop.h"
 
-#include "infra/llm/json_min.h"
+#include "infra/json/json.h"
 #include "infra/llm/openai_stream_accumulator.h"
+
+#include <nlohmann/json.hpp>
 
 #include <cstdlib>
 #include <iostream>
@@ -27,41 +29,12 @@ bool contains_model(const std::vector<std::string>& models, const std::string& m
   return false;
 }
 
-static std::string JsonEscapeStringImpl(const std::string& s);
-
-static std::string JsonEscapeStringImpl(const std::string& s) {
-  // Minimal JSON string escape (no surrounding quotes).
-  // Control chars must be escaped per JSON spec.
-  std::string out;
-  out.reserve(s.size());
-  for (unsigned char uc : s) {
-    const char c = static_cast<char>(uc);
-    switch (c) {
-      case '\\': out += "\\\\"; break;
-      case '"': out += "\\\""; break;
-      case '\b': out += "\\b"; break;
-      case '\f': out += "\\f"; break;
-      case '\n': out += "\\n"; break;
-      case '\r': out += "\\r"; break;
-      case '\t': out += "\\t"; break;
-      default:
-        if (uc <= 0x1F) {
-          // \u001f
-          static const char* kHex = "0123456789abcdef";
-          out += "\\u00";
-          out.push_back(kHex[(uc >> 4) & 0xF]);
-          out.push_back(kHex[uc & 0xF]);
-        } else {
-          out.push_back(c);
-        }
-        break;
-    }
-  }
-  return out;
-}
-
 static std::string JsonEscapeString(const std::string& s) {
-  return JsonEscapeStringImpl(s);
+  // Convert to a properly escaped JSON string (without surrounding quotes).
+  // nlohmann::json handles control chars and UTF-8 safely.
+  const std::string dumped = nlohmann::json(s).dump();
+  if (dumped.size() < 2) return {};
+  return dumped.substr(1, dumped.size() - 2);
 }
 
 } // namespace
@@ -194,15 +167,51 @@ OpenAIRequest::~OpenAIRequest() = default;
 
 bool OpenAIRequest::HandleSseDataLine(const std::string& data_line) {
   OpenAIStreamDelta d;
-  if (!acc_.FeedDataLine(data_line, &d)) return false;
+  if (!acc_.FeedDataLine(data_line, &d)) {
+    std::cerr << "[cpp-agent.llm] error: failed to parse SSE data line\n";
+    return false;
+  }
+
+  if (DebugLlm()) {
+    const bool maybe_has_tool_calls = data_line.find("\"tool_calls\"") != std::string::npos;
+    const bool maybe_has_finish_reason = data_line.find("\"finish_reason\"") != std::string::npos;
+    if (!d.content_delta.empty() || maybe_has_tool_calls || maybe_has_finish_reason || data_line == "[DONE]") {
+      std::cerr << "[cpp-agent.llm] sse delta content.len=" << d.content_delta.size()
+                << " finish=" << (d.has_finish_reason ? 1 : 0)
+                << " saw.tool_calls=" << (maybe_has_tool_calls ? 1 : 0) << "\n";
+    }
+  }
 
   if (!d.content_delta.empty() && on_token_) {
     on_token_(std::move(d.content_delta));
   }
 
   if (d.has_finish_reason) {
-    if (acc_.HasToolCalls() && on_tool_calls_) {
-      std::move(on_tool_calls_)(acc_.BuildAssistantMessage().tool_calls);
+    const bool has_tools = acc_.HasToolCalls();
+    if (DebugLlm()) {
+      std::cerr << "[cpp-agent.llm] round finished has_tool_calls=" << (has_tools ? 1 : 0)
+                << " on_tool_calls=" << (on_tool_calls_ ? 1 : 0) << "\n";
+
+      if (!has_tools) {
+        const bool maybe_has_tool_calls = data_line.find("\"tool_calls\"") != std::string::npos;
+        if (maybe_has_tool_calls) {
+          std::string s = data_line;
+          if (s.size() > 2048) s = s.substr(0, 2048) + "...(truncated)";
+          std::cerr << "[cpp-agent.llm] raw(tool_calls) " << s << "\n";
+        }
+      }
+    }
+    if (has_tools && on_tool_calls_) {
+      auto msg = acc_.BuildAssistantMessage();
+      if (DebugLlm()) {
+        std::cerr << "[cpp-agent.llm] tool_calls n=" << msg.tool_calls.size() << "\n";
+        for (size_t i = 0; i < msg.tool_calls.size(); i++) {
+          const auto& tc = msg.tool_calls[i];
+          std::cerr << "[cpp-agent.llm]  tc[" << i << "] id=" << tc.id << " name=" << tc.name
+                    << " args.len=" << tc.arguments_json.size() << "\n";
+        }
+      }
+      std::move(on_tool_calls_)(std::move(msg.tool_calls));
     }
     return true;
   }

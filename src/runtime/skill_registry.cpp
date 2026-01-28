@@ -1,7 +1,9 @@
 #include "runtime/skill_registry.h"
 
-#include "infra/llm/json_min.h"
 #include "infra/llm/file_io.h"
+#include "infra/json/json.h"
+
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <iostream>
@@ -39,30 +41,41 @@ bool SkillRegistry::LoadFromDir(const std::filesystem::path& skills_dir) {
       continue;
     }
 
-    std::string name;
-    std::string description;
-    std::string prompt_md_rel;
-    std::vector<std::string> tools;
+    auto root_opt = agent::json::Parse(json);
+    if (!root_opt) {
+      std::cerr << "error: failed to parse skill json: " << ent.path().string() << "\n";
+      continue;
+    }
+    const auto& root = *root_opt;
 
-    if (!agent::extract_string_field(json, "name", &name) || name.empty()) {
+    auto name_opt = agent::json::GetString(root, "name");
+    auto desc_opt = agent::json::GetString(root, "description");
+    auto prompt_md_rel_opt = agent::json::GetString(root, "prompt_md");
+
+    if (!name_opt || name_opt->empty()) {
       std::cerr << "error: skill json missing name: " << ent.path().string() << "\n";
       continue;
     }
-    if (!agent::extract_string_field(json, "description", &description) || description.empty()) {
+    if (!desc_opt || desc_opt->empty()) {
       std::cerr << "error: skill json missing description: " << ent.path().string() << "\n";
       continue;
     }
-    if (!agent::extract_string_field(json, "prompt_md", &prompt_md_rel) ||
-        prompt_md_rel.empty()) {
+    if (!prompt_md_rel_opt || prompt_md_rel_opt->empty()) {
       std::cerr << "error: skill json missing prompt_md: " << ent.path().string() << "\n";
       continue;
     }
 
-    // Optional: tools[]
-    // NOTE: json_min has no array support; keep this purpose-built for string arrays.
-    if (!agent::extract_string_array_field(json, "tools", &tools)) {
-      tools.clear();
+    auto tools_opt = agent::json::GetStringArrayAllowMissing(root, "tools");
+    std::vector<std::string> tools;
+    if (!tools_opt.has_value()) {
+      std::cerr << "error: skill json invalid tools (expect string array): " << ent.path().string() << "\n";
+      continue;
     }
+    if (tools_opt) tools = std::move(*tools_opt);
+
+    std::string name = std::move(*name_opt);
+    std::string description = std::move(*desc_opt);
+    std::string prompt_md_rel = std::move(*prompt_md_rel_opt);
 
     if (by_name_.find(name) != by_name_.end()) {
       std::cerr << "error: duplicate skill name: " << name << " ("
