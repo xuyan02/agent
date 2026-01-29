@@ -233,6 +233,13 @@ if(CPP_AGENT_BUILD_TESTS)
   target_compile_options(cpp-agent-tests-general-agent-resume-pause PRIVATE -fno-exceptions -g)
   add_test(NAME cpp-agent-tests-general-agent-resume-pause COMMAND cpp-agent-tests-general-agent-resume-pause)
 
+  add_executable(cpp-agent-tests-general-agent-format-retry
+    tests/test_general_agent_format_retry.cpp
+  )
+  target_link_libraries(cpp-agent-tests-general-agent-format-retry PRIVATE cpp_agent_lib)
+  target_compile_options(cpp-agent-tests-general-agent-format-retry PRIVATE -fno-exceptions -g)
+  add_test(NAME cpp-agent-tests-general-agent-format-retry COMMAND cpp-agent-tests-general-agent-format-retry)
+
   # Tool calling disabled in streaming-only mode for now.
   # add_executable(cpp-agent-tests-agent-tool-loop
   #   tests/test_agent_tool_loop.cpp

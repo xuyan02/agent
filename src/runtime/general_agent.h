@@ -50,6 +50,9 @@ private:
   bool had_tool_calls_{false};
   size_t pending_tool_call_count_{0};
 
+  int format_retry_count_{0};
+  static constexpr int kMaxFormatRetries = 2;
+
   std::string out_buf_;
 
   std::string model_;

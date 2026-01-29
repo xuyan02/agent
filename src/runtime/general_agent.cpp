@@ -43,9 +43,6 @@ std::string GeneralAgent::GetSystemPrompt() const {
       continue;
     }
 
-    out += "[Skill: ";
-    out += s->name;
-    out += "]\n";
     out += s->prompt_md;
     if (!out.empty() && out.back() != '\n') out.push_back('\n');
     out += "\n---\n\n";
@@ -63,9 +60,15 @@ std::vector<Tool> GeneralAgent::GetTools() {
   Tool plan;
   plan.id = "plan";
   plan.description = "Task planning and management";
-  plan.functions.push_back(std::make_shared<agent::plan2::PlanAddTasksFunction>(&plan2_));
-  plan.functions.push_back(std::make_shared<agent::plan2::PlanSetStatusFunction>(&plan2_));
+  plan.functions.push_back(std::make_shared<agent::plan2::PlanAddTaskFunction>(&plan2_));
+  plan.functions.push_back(std::make_shared<agent::plan2::PlanAddSubtaskFunction>(&plan2_));
+  plan.functions.push_back(std::make_shared<agent::plan2::PlanActivateTaskFunction>(&plan2_));
+  plan.functions.push_back(std::make_shared<agent::plan2::PlanSuspendTaskFunction>(&plan2_));
+  plan.functions.push_back(std::make_shared<agent::plan2::PlanResumeTaskFunction>(&plan2_));
+  plan.functions.push_back(std::make_shared<agent::plan2::PlanCompleteTaskFunction>(&plan2_));
+  plan.functions.push_back(std::make_shared<agent::plan2::PlanAbandonTaskFunction>(&plan2_));
   plan.functions.push_back(std::make_shared<agent::plan2::PlanRemoveTaskFunction>(&plan2_));
+  plan.functions.push_back(std::make_shared<agent::plan2::PlanClearSubtasksFunction>(&plan2_));
 
   return {plan};
 }
@@ -108,6 +111,9 @@ void GeneralAgent::SendUserBatchRequest() {
   std::string user_prompt;
   if (queue_.empty()) {
     user_prompt = "[resume]\n";
+    if (std::getenv("CPP_AGENT_DEBUG_CONTROL_FRAMES")) {
+      std::cerr << "[cpp-agent.control] resume agent=" << name() << "\n";
+    }
   } else {
     user_prompt = agent::BuildAgentBatchInput(&queue_);
   }
@@ -194,32 +200,90 @@ void GeneralAgent::OnRequestDone() {
   // Final assistant text round.
   in_flight_ = false;
 
-  // Control frame: if assistant replies with [pause], stop auto-driving new rounds.
-  // [pause] must be the only output (per skill protocol).
-  if (out_buf_ == "[pause]\n" || out_buf_ == "[pause]") {
+  auto schedule_retry = [&](std::string why) {
+    format_retry_count_++;
+    if (format_retry_count_ > kMaxFormatRetries) {
+      std::cerr << "error: agent output format retry exceeded (" << why << ")\n";
+      out_buf_.clear();
+      return;
+    }
+
+    if (std::getenv("CPP_AGENT_DEBUG_LLM")) {
+      std::cerr << "[cpp-agent.llm] format_retry agent=" << name() << " n=" << format_retry_count_
+                << " why=" << why << "\n";
+    }
+
+    // Inject a correction instruction and retry immediately. This round produces no external output.
+    llm_history_.push_back({.role = LlmRole::kSystem,
+                            .content =
+                                "FORMAT ERROR: Your previous reply did not follow the required output format. "
+                                "This message is not a user request. Reply again to the same user request, but in the correct format. "
+                                "Allowed formats:\n"
+                                "1) Exactly '[pause]' alone (no other text).\n"
+                                "2) One or more routed blocks, each starting with '@<target>:' (e.g. '@master: ...'), followed by optional continuation lines.\n"
+                                "Disallowed: any other text outside these frames; empty target like '@:'."});
+    TrimHistory();
+
     out_buf_.clear();
+    TryStartRequest();
+  };
+
+  if (std::getenv("CPP_AGENT_DEBUG_CONTROL_FRAMES")) {
+    const bool is_pause = (out_buf_ == "[pause]\n" || out_buf_ == "[pause]");
+    if (is_pause) {
+      std::cerr << "[cpp-agent.control] pause agent=" << name() << "\n";
+    }
+  }
+
+  const bool contains_pause = (out_buf_.find("[pause]") != std::string::npos);
+  const bool is_pause_only = (out_buf_ == "[pause]\n" || out_buf_ == "[pause]");
+
+  // B) Mixed control frame: contains [pause] but has other content.
+  if (contains_pause && !is_pause_only) {
+    schedule_retry("mixed_pause");
     return;
   }
 
+  // Control frame: if assistant replies with [pause], stop auto-driving new rounds.
+  // [pause] must be the only output (per skill protocol).
+  if (is_pause_only) {
+    out_buf_.clear();
+    format_retry_count_ = 0;
+    return;
+  }
+
+  // Keep assistant output in history for context. If the output is malformed we will append an
+  // additional correction instruction and retry; we still keep the malformed output to show what failed.
   if (!out_buf_.empty()) {
     llm_history_.push_back({.role = LlmRole::kAssistant, .content = out_buf_});
     TrimHistory();
+  } else {
+    // Empty assistant text round: not a format violation.
+    format_retry_count_ = 0;
   }
 
   auto out = agent::ParseAgentMultiTargetOutput(name(), out_buf_);
+  // A) Missing routing header: non-empty output but no parsable @to: blocks.
   if (!out_buf_.empty() && out.empty()) {
-    std::cerr << "error: agent output dropped (missing @to: header). "
-                 "Add '@master:' or '@<agent>:' lines to route messages.\n";
+    schedule_retry("missing_to_header");
+    return;
   }
 
+  bool any_empty_to = false;
   for (auto& m : out) {
     if (m.to.empty()) {
-      std::cerr << "error: empty to in agent output (dropped)\n";
+      any_empty_to = true;
       continue;
     }
     runtime().Emit(m);
   }
+  // C) Parsed block but empty target.
+  if (any_empty_to) {
+    schedule_retry("empty_to");
+    return;
+  }
   out_buf_.clear();
+  format_retry_count_ = 0;
 
   auto* loop = dust::MessageLoop::Current();
   if (!loop) {
@@ -241,6 +305,15 @@ void GeneralAgent::OnToolCalls(std::vector<LlmToolCall> tool_calls) {
   if (tool_calls.empty()) return;
 
   had_tool_calls_ = true;
+
+  if (std::getenv("CPP_AGENT_DEBUG_LLM")) {
+    std::cerr << "[cpp-agent.llm] resp(tool_calls) agent=" << name() << " n=" << tool_calls.size() << "\n";
+    for (size_t i = 0; i < tool_calls.size(); i++) {
+      const auto& tc = tool_calls[i];
+      std::cerr << "[cpp-agent.llm]  tc[" << i << "] id=" << tc.id << " name=" << tc.name
+                << " args.len=" << tc.arguments_json.size() << "\n";
+    }
+  }
 
   LlmMessage assistant;
   assistant.role = LlmRole::kAssistant;

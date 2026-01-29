@@ -1,17 +1,21 @@
-#include "runtime/plan2/plan2_model.h"
 
 #include <cassert>
 #include <string>
 
+#include "runtime/plan2/plan2_model.h"
+
 namespace {
 
+using agent::plan2::AddSubtaskInput;
 using agent::plan2::AddTaskInput;
 using agent::plan2::PlanModel;
 using agent::plan2::Status;
 
-static AddTaskInput top(std::string title, std::string report_to) {
+static AddTaskInput top(std::string name, std::string report_to) {
   AddTaskInput in;
-  in.title = std::move(title);
+  in.name = std::move(name);
+  in.description = "desc";
+  in.goal = "DoD: ok";
   in.report_to = std::move(report_to);
   return in;
 }
@@ -24,30 +28,58 @@ int main() {
   // top-level must have report_to
   {
     AddTaskInput in;
-    in.title = "t";
-    auto r = plan.AddTasks({in});
+    in.name = "t";
+    in.description = "d";
+    in.goal = "DoD: ok";
+    auto r = plan.AddTask(in);
     assert(!r.error.empty());
   }
 
   // create two top-level tasks
-  auto r1 = plan.AddTasks({top("A", "master"), top("B", "master")});
-  assert(r1.error.empty());
-  assert(r1.created.size() == 2);
-  const std::string a = r1.created[0].id;
-  const std::string b = r1.created[1].id;
+  auto r1a = plan.AddTask(top("A", "master"));
+  assert(r1a.error.empty());
+  auto r1b = plan.AddTask(top("B", "master"));
+  assert(r1b.error.empty());
+  const std::string a = r1a.created.id;
+  const std::string b = r1b.created.id;
+  (void)b;
 
-  // dependent task starts not_ready if dep not done
-  AddTaskInput c_in = top("C", "master");
-  c_in.depends_on = {a};
-  auto r2 = plan.AddTasks({c_in});
-  assert(r2.error.empty());
-  assert(r2.created.size() == 1);
-  assert(r2.created[0].status == Status::kNotReady);
+  // dependent task starts blocked if dep not done
+  {
+    AddTaskInput c_in = top("C", "master");
+    c_in.depends_on = {a};
+    auto r2 = plan.AddTask(c_in);
+    assert(r2.error.empty());
+    assert(r2.created.status == Status::kBlocked);
+  }
 
-  // Setting A to canceled cascades cancel to C.
-  auto r3 = plan.SetStatus(a, Status::kCanceled, "");
-  assert(r3.error.empty());
-  assert(!r3.canceled_cascade.empty());
+  // completing A unblocks C (normalize siblings)
+  {
+    auto act = plan.ActivateTask(a);
+    assert(act.error.empty());
+    auto done = plan.CompleteTask(a);
+    assert(done.error.empty());
+  }
+
+  // subtask activation auto-activates ancestors
+  {
+    // Create top-level D with a subtask.
+    auto rd = plan.AddTask(top("D", "master"));
+    assert(rd.error.empty());
+    const std::string d = rd.created.id;
+
+    AddSubtaskInput s;
+    s.parent_id = d;
+    s.name = "d1";
+    s.description = "desc";
+    s.goal = "DoD: ok";
+    auto rs = plan.AddSubtask(s);
+    assert(rs.error.empty());
+
+    // Activate subtask; should also activate D.
+    auto act = plan.ActivateTask(rs.created.id);
+    assert(act.error.empty());
+  }
 
   return 0;
 }

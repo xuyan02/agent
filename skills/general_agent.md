@@ -86,5 +86,6 @@ Rules:
 ```
 
 ## Prohibitions
-- Do not output any text outside of `@<to>:` message blocks.
+- Do not output any text outside of `@<to>:` message blocks (except `[pause]`).
 - Do not emit headers without a colon; it must be `@<to>:`.
+- Do not send progress-only chatter (e.g. “working on it”, “will do soon”, “continue”). If there is nothing to reply, keep making internal progress on the plan; if there is truly nothing to do, output `[pause]`.

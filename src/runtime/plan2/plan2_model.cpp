@@ -6,29 +6,24 @@
 #include <sstream>
 
 namespace agent::plan2 {
-namespace {
 
 std::string StatusToString(Status s) {
   switch (s) {
-    case Status::kPending:
-      return "pending";
-    case Status::kNotReady:
-      return "not_ready";
     case Status::kBlocked:
       return "blocked";
-    case Status::kInProgress:
-      return "in_progress";
+    case Status::kReady:
+      return "ready";
+    case Status::kActive:
+      return "active";
+    case Status::kWaiting:
+      return "waiting";
     case Status::kDone:
       return "done";
-    case Status::kCanceled:
-      return "canceled";
-    case Status::kFailed:
-      return "failed";
+    case Status::kAbandoned:
+      return "abandoned";
   }
   return "unknown";
 }
-
-} // namespace
 
 PlanModel::PlanModel() = default;
 
@@ -40,12 +35,13 @@ const Task* PlanModel::Find(const std::string& id) const {
 
 std::vector<std::string> PlanModel::ListIdsInInsertionOrder() const { return insertion_order_; }
 
+
 bool PlanModel::Exists(const std::string& id) const { return tasks_.find(id) != tasks_.end(); }
 
 bool PlanModel::IsTopLevel(const Task& t) const { return !t.parent_id.has_value(); }
 
 bool PlanModel::IsTerminal(Status s) const {
-  return s == Status::kDone || s == Status::kCanceled || s == Status::kFailed;
+  return s == Status::kDone || s == Status::kAbandoned;
 }
 
 bool PlanModel::DepsSatisfied(const Task& t) const {
@@ -164,102 +160,177 @@ bool PlanModel::ValidateReportToRule(const AddTaskInput& in, std::string* out_er
 }
 
 Status PlanModel::ComputeInitialStatus(const AddTaskInput& in) const {
-  // If dependencies exist and are not satisfied, the task starts not_ready.
-  if (!in.depends_on.empty()) {
-    for (const auto& dep : in.depends_on) {
-      const auto it = tasks_.find(dep);
-      if (it == tasks_.end() || it->second.status != Status::kDone) {
-        return Status::kNotReady;
-      }
+  if (in.depends_on.empty()) return Status::kReady;
+
+  for (const auto& dep : in.depends_on) {
+    const auto it = tasks_.find(dep);
+    if (it == tasks_.end() || it->second.status != Status::kDone) {
+      return Status::kBlocked;
     }
   }
-  return Status::kPending;
+
+  return Status::kReady;
 }
 
-AddTasksResult PlanModel::AddTasks(const std::vector<AddTaskInput>& inputs) {
-  AddTasksResult out;
+AddTaskResult PlanModel::AddTask(const AddTaskInput& in) {
+  AddTaskResult out;
 
-  for (const auto& in : inputs) {
-    std::string error;
-    if (!ValidateReportToRule(in, &error)) {
-      out.error = error;
-      return out;
-    }
-
-    if (in.title.empty()) {
-      out.error = "title is required";
-      return out;
-    }
-
-    if (in.parent_id.has_value() && !Exists(*in.parent_id)) {
-      out.error = "parent_id not found";
-      return out;
-    }
-
-    if (!ValidateDependsOnSiblings(in, &error)) {
-      out.error = error;
-      return out;
-    }
-
-    if (!ValidateNoDependencyCycle(in, &error)) {
-      out.error = error;
-      return out;
-    }
-
-    const std::string id = GenerateUuidV4();
-
-    Task t;
-    t.id = id;
-    t.title = in.title;
-    t.detail = in.detail;
-    t.parent_id = in.parent_id;
-    t.depends_on = in.depends_on;
-    t.report_to = in.report_to;
-    t.status = ComputeInitialStatus(in);
-
-    insertion_order_.push_back(id);
-    tasks_.emplace(id, t);
-
-    if (t.parent_id.has_value()) {
-      children_[*t.parent_id].push_back(id);
-    } else {
-      top_level_.push_back(id);
-    }
-
-    out.created.push_back(t);
+  std::string error;
+  if (!ValidateReportToRule(in, &error)) {
+    out.error = error;
+    return out;
   }
 
+  if (in.name.empty()) {
+    out.error = "name is required";
+    return out;
+  }
+
+  if (in.description.empty()) {
+    out.error = "description is required";
+    return out;
+  }
+
+  if (in.goal.empty()) {
+    out.error = "goal is required";
+    return out;
+  }
+
+  if (in.parent_id.has_value()) {
+    out.error = "AddTask only creates top-level tasks";
+    return out;
+  }
+
+  if (!ValidateDependsOnSiblings(in, &error)) {
+    out.error = error;
+    return out;
+  }
+
+  if (!ValidateNoDependencyCycle(in, &error)) {
+    out.error = error;
+    return out;
+  }
+
+  const std::string id = GenerateUuidV4();
+
+  Task t;
+  t.id = id;
+  t.name = in.name;
+  t.description = in.description;
+  t.goal = in.goal;
+  t.parent_id = std::nullopt;
+  t.depends_on = in.depends_on;
+  t.report_to = in.report_to;
+  t.status = ComputeInitialStatus(in);
+
+  insertion_order_.push_back(id);
+  tasks_.emplace(id, t);
+  top_level_.push_back(id);
+
+  out.created = t;
   return out;
 }
 
-void PlanModel::NormalizeSiblings(const std::optional<std::string>& parent_id, SetStatusResult* inout) {
-  // Normalize only tasks that are currently pending/not_ready.
+AddSubtaskResult PlanModel::AddSubtask(const AddSubtaskInput& in) {
+  AddSubtaskResult out;
+
+  if (in.parent_id.empty()) {
+    out.error = "parent_id is required";
+    return out;
+  }
+
+  if (in.name.empty()) {
+    out.error = "name is required";
+    return out;
+  }
+
+  if (in.description.empty()) {
+    out.error = "description is required";
+    return out;
+  }
+
+  if (in.goal.empty()) {
+    out.error = "goal is required";
+    return out;
+  }
+
+  if (!Exists(in.parent_id)) {
+    out.error = "parent_id not found";
+    return out;
+  }
+
+  AddTaskInput tmp;
+  tmp.name = in.name;
+  tmp.description = in.description;
+  tmp.goal = in.goal;
+  tmp.parent_id = in.parent_id;
+  tmp.depends_on = in.depends_on;
+  tmp.report_to = std::nullopt;
+
+  std::string error;
+  if (!ValidateReportToRule(tmp, &error)) {
+    out.error = error;
+    return out;
+  }
+
+  if (!ValidateDependsOnSiblings(tmp, &error)) {
+    out.error = error;
+    return out;
+  }
+
+  if (!ValidateNoDependencyCycle(tmp, &error)) {
+    out.error = error;
+    return out;
+  }
+
+  const std::string id = GenerateUuidV4();
+
+  Task t;
+  t.id = id;
+  t.name = in.name;
+  t.description = in.description;
+  t.goal = in.goal;
+  t.parent_id = in.parent_id;
+  t.depends_on = in.depends_on;
+  t.report_to = std::nullopt;
+  t.status = ComputeInitialStatus(tmp);
+
+  insertion_order_.push_back(id);
+  tasks_.emplace(id, t);
+  children_[in.parent_id].push_back(id);
+
+  out.created = t;
+  return out;
+}
+
+static Status normalize_ready_blocked(Status cur, bool deps_ok) {
+  if (cur != Status::kReady && cur != Status::kBlocked) return cur;
+  return deps_ok ? Status::kReady : Status::kBlocked;
+}
+
+void PlanModel::NormalizeSiblings(const std::optional<std::string>& parent_id, std::vector<Task>* out_updated) {
   auto normalize_one = [&](const std::string& id) {
     auto it = tasks_.find(id);
     if (it == tasks_.end()) return;
     Task& t = it->second;
-    if (IsTerminal(t.status) || t.status == Status::kInProgress || t.status == Status::kBlocked) return;
+    if (IsTerminal(t.status) || t.status == Status::kActive || t.status == Status::kWaiting) return;
 
     const bool deps_ok = DepsSatisfied(t);
-    const Status want = deps_ok ? Status::kPending : Status::kNotReady;
+    const Status want = deps_ok ? Status::kReady : Status::kBlocked;
     if (t.status != want) {
       t.status = want;
-      inout->normalized.push_back(t);
+      out_updated->push_back(t);
     }
   };
 
   if (parent_id.has_value()) {
     const auto it = children_.find(*parent_id);
     if (it == children_.end()) return;
-    for (const auto& id : it->second) {
-      normalize_one(id);
-    }
+    for (const auto& id : it->second) normalize_one(id);
     return;
   }
 
-  for (const auto& id : top_level_) {
-    normalize_one(id);
-  }
+  for (const auto& id : top_level_) normalize_one(id);
 }
 
 std::vector<std::string> PlanModel::DirectDependentsOf(const std::string& task_id) const {
@@ -370,21 +441,8 @@ void PlanModel::HardDeleteSubtree(const std::string& task_id, std::vector<std::s
   }
 }
 
-void PlanModel::CascadingCancelDependents(const std::string& task_id, SetStatusResult* out) {
-  const auto deps = TransitiveDependentsClosure(task_id);
-  for (const auto& dep_id : deps) {
-    auto it = tasks_.find(dep_id);
-    if (it == tasks_.end()) continue;
-    Task& t = it->second;
-    if (IsTerminal(t.status)) continue;
-    t.status = Status::kCanceled;
-    t.block_reason.clear();
-    out->canceled_cascade.push_back(t);
-  }
-}
-
-SetStatusResult PlanModel::SetStatus(const std::string& task_id, Status status, std::string block_reason) {
-  SetStatusResult out;
+ActivateResult PlanModel::ActivateTask(const std::string& task_id) {
+  ActivateResult out;
 
   auto it = tasks_.find(task_id);
   if (it == tasks_.end()) {
@@ -395,67 +453,247 @@ SetStatusResult PlanModel::SetStatus(const std::string& task_id, Status status, 
   Task& t = it->second;
 
   if (IsTerminal(t.status)) {
-    out.error = "terminal status cannot roll back";
+    out.error = "terminal task cannot be activated";
     return out;
   }
 
-  const bool deps_ok = DepsSatisfied(t);
+  if (t.status == Status::kWaiting) {
+    out.error = "waiting task must be resume_task first";
+    return out;
+  }
 
-  if (status == Status::kPending && !deps_ok) {
+  if (t.status != Status::kReady) {
+    out.error = "task must be ready";
+    return out;
+  }
+
+  if (!DepsSatisfied(t)) {
     out.error = "unmet_dependencies";
     return out;
   }
 
-  if (status == Status::kNotReady && deps_ok) {
-    out.error = "dependencies_already_satisfied";
-    return out;
+  // If activating a subtask, activate its ancestor chain up to top-level.
+  std::vector<std::string> chain;
+  {
+    std::string cur = task_id;
+    while (true) {
+      auto jt = tasks_.find(cur);
+      if (jt == tasks_.end()) break;
+      const auto parent = jt->second.parent_id;
+      if (!parent.has_value()) break;
+      chain.push_back(*parent);
+      cur = *parent;
+    }
   }
 
-  if (status == Status::kBlocked) {
-    if (!deps_ok) {
-      out.error = "unmet_dependencies";
-      return out;
+  // Activate top-level ancestor first (may implicitly switch existing top-level active).
+  if (!chain.empty()) {
+    const std::string top = chain.back();
+    auto top_it = tasks_.find(top);
+    if (top_it != tasks_.end()) {
+      Task& top_t = top_it->second;
+      if (!DepsSatisfied(top_t)) {
+        out.error = "unmet_dependencies";
+        return out;
+      }
+      if (top_t.status == Status::kWaiting) {
+        out.error = "waiting ancestor must be resume_task first";
+        return out;
+      }
+      if (IsTerminal(top_t.status)) {
+        out.error = "terminal ancestor cannot be activated";
+        return out;
+      }
+      if (top_t.status == Status::kReady) {
+        // Implicit switch: ensure only one top-level active.
+        for (const auto& id : top_level_) {
+          auto kt = tasks_.find(id);
+          if (kt == tasks_.end()) continue;
+          Task& other = kt->second;
+          if (other.id == top_t.id) continue;
+          if (other.status == Status::kActive) {
+            other.status = Status::kReady;
+            out.updated.push_back(other);
+          }
+        }
+        top_t.status = Status::kActive;
+        out.updated.push_back(top_t);
+      } else if (top_t.status != Status::kActive) {
+        out.error = "ancestor must be ready or active";
+        return out;
+      }
     }
-    if (block_reason.empty()) {
-      out.error = "block_reason is required";
-      return out;
+
+    // Activate intermediate ancestors (closest to root first).
+    for (auto itc = chain.rbegin(); itc != chain.rend(); ++itc) {
+      const std::string& anc_id = *itc;
+      auto at = tasks_.find(anc_id);
+      if (at == tasks_.end()) continue;
+      Task& anc = at->second;
+      if (anc.status == Status::kActive) continue;
+      if (anc.status != Status::kReady) {
+        out.error = "ancestor must be ready or active";
+        return out;
+      }
+      if (!DepsSatisfied(anc)) {
+        out.error = "unmet_dependencies";
+        return out;
+      }
+      anc.status = Status::kActive;
+      out.updated.push_back(anc);
     }
   } else {
-    if (!block_reason.empty()) {
-      out.error = "block_reason must be empty unless status is blocked";
-      return out;
-    }
-  }
-
-  if (status == Status::kInProgress && !deps_ok) {
-    out.error = "unmet_dependencies";
-    return out;
-  }
-
-  // Apply.
-  t.status = status;
-  t.block_reason = (status == Status::kBlocked) ? block_reason : std::string{};
-  out.updated.push_back(t);
-
-  // Cascading cancels.
-  if (status == Status::kCanceled || status == Status::kFailed) {
-    CascadingCancelDependents(task_id, &out);
-  }
-
-  // Parent terminal deletes subtree.
-  if (IsTerminal(status)) {
-    const auto cit = children_.find(task_id);
-    if (cit != children_.end() && !cit->second.empty()) {
-      // Hard-delete subtree (children and descendants) but keep the parent itself.
-      // Deleting descendants first makes id stability in logs simpler.
-      for (const auto& child : std::vector<std::string>(cit->second)) {
-        HardDeleteSubtree(child, &out.deleted);
+    // Activating a top-level task: implicit switch existing active -> ready.
+    for (const auto& id : top_level_) {
+      auto kt = tasks_.find(id);
+      if (kt == tasks_.end()) continue;
+      Task& other = kt->second;
+      if (other.id == t.id) continue;
+      if (other.status == Status::kActive) {
+        other.status = Status::kReady;
+        out.updated.push_back(other);
       }
     }
   }
 
-  // Normalize siblings of this task (based on its parent_id).
-  NormalizeSiblings(t.parent_id, &out);
+  // Finally activate the target.
+  t.status = Status::kActive;
+  out.updated.push_back(t);
+  return out;
+}
+
+SimpleResult PlanModel::SuspendTask(const std::string& task_id, std::string reason) {
+  SimpleResult out;
+
+  if (reason.empty()) {
+    out.error = "reason is required";
+    return out;
+  }
+
+  auto it = tasks_.find(task_id);
+  if (it == tasks_.end()) {
+    out.error = "task_id not found";
+    return out;
+  }
+
+  Task& t = it->second;
+
+  if (IsTerminal(t.status)) {
+    out.error = "terminal task cannot be suspended";
+    return out;
+  }
+
+  if (t.status != Status::kActive) {
+    out.error = "task must be active";
+    return out;
+  }
+
+  t.status = Status::kWaiting;
+  t.reason = std::move(reason);
+  out.updated.push_back(t);
+  return out;
+}
+
+SimpleResult PlanModel::ResumeTask(const std::string& task_id) {
+  SimpleResult out;
+
+  auto it = tasks_.find(task_id);
+  if (it == tasks_.end()) {
+    out.error = "task_id not found";
+    return out;
+  }
+
+  Task& t = it->second;
+
+  if (IsTerminal(t.status)) {
+    out.error = "terminal task cannot be resumed";
+    return out;
+  }
+
+  if (t.status != Status::kWaiting) {
+    out.error = "task must be waiting";
+    return out;
+  }
+
+  // waiting -> ready, clear reason.
+  t.status = Status::kReady;
+  t.reason.clear();
+  out.updated.push_back(t);
+
+  std::vector<Task> normalized;
+  NormalizeSiblings(t.parent_id, &normalized);
+  for (auto& nt : normalized) out.updated.push_back(std::move(nt));
+
+  return out;
+}
+
+SimpleResult PlanModel::CompleteTask(const std::string& task_id) {
+  SimpleResult out;
+
+  auto it = tasks_.find(task_id);
+  if (it == tasks_.end()) {
+    out.error = "task_id not found";
+    return out;
+  }
+
+  Task& t = it->second;
+
+  if (IsTerminal(t.status)) {
+    out.error = "terminal task cannot be completed";
+    return out;
+  }
+
+  if (t.status != Status::kActive) {
+    out.error = "task must be active";
+    return out;
+  }
+
+  t.status = Status::kDone;
+  t.reason.clear();
+  out.updated.push_back(t);
+
+  // Completing a task may unblock siblings.
+  std::vector<Task> normalized;
+  NormalizeSiblings(t.parent_id, &normalized);
+  for (auto& nt : normalized) out.updated.push_back(std::move(nt));
+
+  return out;
+}
+
+SimpleResult PlanModel::AbandonTask(const std::string& task_id, std::string reason) {
+  SimpleResult out;
+
+  if (reason.empty()) {
+    out.error = "reason is required";
+    return out;
+  }
+
+  auto it = tasks_.find(task_id);
+  if (it == tasks_.end()) {
+    out.error = "task_id not found";
+    return out;
+  }
+
+  Task& t = it->second;
+
+  if (t.status == Status::kDone) {
+    out.error = "done task cannot be abandoned";
+    return out;
+  }
+
+  if (t.status == Status::kAbandoned) {
+    out.error = "task already abandoned";
+    return out;
+  }
+
+  t.status = Status::kAbandoned;
+  t.reason = std::move(reason);
+  out.updated.push_back(t);
+
+  // Abandoning a task may unblock siblings.
+  std::vector<Task> normalized;
+  NormalizeSiblings(t.parent_id, &normalized);
+  for (auto& nt : normalized) out.updated.push_back(std::move(nt));
 
   return out;
 }
@@ -484,9 +722,28 @@ RemoveTaskResult PlanModel::RemoveTask(const std::string& task_id) {
   return out;
 }
 
+ClearSubtasksResult PlanModel::ClearSubtasks(const std::string& parent_id) {
+  ClearSubtasksResult out;
+
+  if (!Exists(parent_id)) {
+    out.error = "parent_id not found";
+    return out;
+  }
+
+  const auto it = children_.find(parent_id);
+  if (it == children_.end() || it->second.empty()) return out;
+
+  // Delete each direct child subtree.
+  for (const auto& child : std::vector<std::string>(it->second)) {
+    HardDeleteSubtree(child, &out.deleted);
+  }
+
+  return out;
+}
+
 std::string PlanModel::RenderMarkdown() const {
   std::ostringstream out;
-  out << "## Plan\n";
+  out << "# Current Plan Tasks\n";
 
   std::function<void(const std::string&, int)> render_task = [&](const std::string& id, int depth) {
     const auto it = tasks_.find(id);
@@ -496,7 +753,7 @@ std::string PlanModel::RenderMarkdown() const {
     const int header_indent = 2 * depth;
     const int field_indent = header_indent + 4;
 
-    out << std::string(header_indent, ' ') << "- [" << StatusToString(t.status) << "] " << t.title << "\n";
+    out << std::string(header_indent, ' ') << "- [" << StatusToString(t.status) << "] " << t.name << "\n";
 
     out << std::string(field_indent, ' ') << "- id: " << t.id << "\n";
     if (!t.parent_id.has_value()) {
@@ -504,6 +761,9 @@ std::string PlanModel::RenderMarkdown() const {
         out << std::string(field_indent, ' ') << "- report_to: " << *t.report_to << "\n";
       }
     }
+
+    out << std::string(field_indent, ' ') << "- description: " << t.description << "\n";
+    out << std::string(field_indent, ' ') << "- goal: " << t.goal << "\n";
 
     if (t.depends_on.empty()) {
       out << std::string(field_indent, ' ') << "- depends_on: -\n";
@@ -516,12 +776,8 @@ std::string PlanModel::RenderMarkdown() const {
       out << "\n";
     }
 
-    if (!t.detail.empty()) {
-      out << std::string(field_indent, ' ') << "- detail: " << t.detail << "\n";
-    }
-
-    if (t.status == Status::kBlocked) {
-      out << std::string(field_indent, ' ') << "- block_reason: " << t.block_reason << "\n";
+    if (t.status == Status::kWaiting || t.status == Status::kAbandoned) {
+      out << std::string(field_indent, ' ') << "- reason: " << t.reason << "\n";
     }
 
     const auto cit = children_.find(t.id);

@@ -17,7 +17,7 @@ namespace agent {
 namespace {
 
 bool DebugLlm() {
-  const char* v = std::getenv("CPP_AGENT_DEBUG_LLM");
+  const char* v = std::getenv("CPP_AGENT_DEBUG_LLM_VERBOSE");
   return v && *v && strcmp(v, "0") != 0;
 }
 
@@ -172,7 +172,7 @@ bool OpenAIRequest::HandleSseDataLine(const std::string& data_line) {
     return false;
   }
 
-  if (DebugLlm()) {
+  if (DebugLlm() && std::getenv("CPP_AGENT_DEBUG_LLM_VERBOSE")) {
     const bool maybe_has_tool_calls = data_line.find("\"tool_calls\"") != std::string::npos;
     const bool maybe_has_finish_reason = data_line.find("\"finish_reason\"") != std::string::npos;
     if (!d.content_delta.empty() || maybe_has_tool_calls || maybe_has_finish_reason || data_line == "[DONE]") {

@@ -2,6 +2,8 @@
 
 #include <sstream>
 
+#include "runtime/plan2/plan2_model.h"
+
 namespace agent::plan2 {
 namespace {
 
@@ -57,44 +59,6 @@ static std::string extract_json_string_or_empty(const std::string& json, const s
   return out;
 }
 
-static std::string extract_json_object_for_key_or_empty(const std::string& json, const std::string& key) {
-  auto pos = json.find('"' + key + '"');
-  if (pos == std::string::npos) return {};
-  pos = json.find(':', pos);
-  if (pos == std::string::npos) return {};
-  pos++;
-  while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\n' || json[pos] == '\r' || json[pos] == '\t')) pos++;
-  if (pos >= json.size() || json[pos] != '{') return {};
-
-  int depth = 0;
-  size_t start = pos;
-  for (; pos < json.size(); ++pos) {
-    const char c = json[pos];
-    if (c == '"') {
-      // skip string
-      pos++;
-      while (pos < json.size()) {
-        if (json[pos] == '\\') {
-          pos += 2;
-          continue;
-        }
-        if (json[pos] == '"') break;
-        pos++;
-      }
-      continue;
-    }
-    if (c == '{') depth++;
-    if (c == '}') {
-      depth--;
-      if (depth == 0) {
-        const size_t end = pos + 1;
-        return json.substr(start, end - start);
-      }
-    }
-  }
-  return {};
-}
-
 static std::vector<std::string> extract_json_string_array_or_empty(const std::string& json, const std::string& key) {
   std::vector<std::string> out;
   auto pos = json.find('"' + key + '"');
@@ -115,7 +79,7 @@ static std::vector<std::string> extract_json_string_array_or_empty(const std::st
       continue;
     }
     if (json[pos] != '"') {
-      // non-string element not supported in MVP
+      // non-string element not supported
       return {};
     }
     pos++;
@@ -138,115 +102,25 @@ static std::vector<std::string> extract_json_string_array_or_empty(const std::st
   return out;
 }
 
-static std::vector<std::string> extract_tasks_array_objects(const std::string& arguments_json) {
-  // Extract tasks: [ {..}, {..} ] as raw object strings.
-  std::vector<std::string> out;
-
-  auto pos = arguments_json.find("\"tasks\"");
-  if (pos == std::string::npos) return out;
-  pos = arguments_json.find('[', pos);
-  if (pos == std::string::npos) return out;
-  pos++;
-
-  while (pos < arguments_json.size()) {
-    while (pos < arguments_json.size() &&
-           (arguments_json[pos] == ' ' || arguments_json[pos] == '\n' || arguments_json[pos] == '\r' ||
-            arguments_json[pos] == '\t' || arguments_json[pos] == ',')) {
-      pos++;
-    }
-    if (pos >= arguments_json.size() || arguments_json[pos] == ']') break;
-    if (arguments_json[pos] != '{') return {};
-
-    int depth = 0;
-    const size_t start = pos;
-    for (; pos < arguments_json.size(); ++pos) {
-      const char c = arguments_json[pos];
-      if (c == '"') {
-        pos++;
-        while (pos < arguments_json.size()) {
-          if (arguments_json[pos] == '\\') {
-            pos += 2;
-            continue;
-          }
-          if (arguments_json[pos] == '"') break;
-          pos++;
-        }
-        continue;
-      }
-      if (c == '{') depth++;
-      if (c == '}') {
-        depth--;
-        if (depth == 0) {
-          const size_t end = pos + 1;
-          out.push_back(arguments_json.substr(start, end - start));
-          pos = end;
-          break;
-        }
-      }
-    }
+static std::string ids_to_json_array(const std::vector<std::string>& ids) {
+  std::ostringstream oss;
+  oss << '[';
+  for (size_t i = 0; i < ids.size(); ++i) {
+    if (i) oss << ',';
+    oss << "\"" << json_escape(ids[i]) << "\"";
   }
-
-  return out;
-}
-
-static std::string status_to_json(Status s) {
-  switch (s) {
-    case Status::kPending:
-      return "\"pending\"";
-    case Status::kNotReady:
-      return "\"not_ready\"";
-    case Status::kBlocked:
-      return "\"blocked\"";
-    case Status::kInProgress:
-      return "\"in_progress\"";
-    case Status::kDone:
-      return "\"done\"";
-    case Status::kCanceled:
-      return "\"canceled\"";
-    case Status::kFailed:
-      return "\"failed\"";
-  }
-  return "\"unknown\"";
-}
-
-static bool parse_status(const std::string& s, Status* out) {
-  if (s == "pending") {
-    *out = Status::kPending;
-    return true;
-  }
-  if (s == "not_ready") {
-    *out = Status::kNotReady;
-    return true;
-  }
-  if (s == "blocked") {
-    *out = Status::kBlocked;
-    return true;
-  }
-  if (s == "in_progress") {
-    *out = Status::kInProgress;
-    return true;
-  }
-  if (s == "done") {
-    *out = Status::kDone;
-    return true;
-  }
-  if (s == "canceled") {
-    *out = Status::kCanceled;
-    return true;
-  }
-  if (s == "failed") {
-    *out = Status::kFailed;
-    return true;
-  }
-  return false;
+  oss << ']';
+  return oss.str();
 }
 
 static std::string task_to_json(const Task& t) {
   std::ostringstream oss;
   oss << '{';
   oss << "\"id\":\"" << json_escape(t.id) << "\"";
-  oss << ",\"title\":\"" << json_escape(t.title) << "\"";
-  oss << ",\"status\":" << status_to_json(t.status);
+  oss << ",\"name\":\"" << json_escape(t.name) << "\"";
+  oss << ",\"description\":\"" << json_escape(t.description) << "\"";
+  oss << ",\"goal\":\"" << json_escape(t.goal) << "\"";
+  oss << ",\"status\":\"" << json_escape(StatusToString(t.status)) << "\"";
 
   if (t.parent_id.has_value()) {
     oss << ",\"parent_id\":\"" << json_escape(*t.parent_id) << "\"";
@@ -263,196 +137,272 @@ static std::string task_to_json(const Task& t) {
     oss << ",\"report_to\":\"" << json_escape(*t.report_to) << "\"";
   }
 
-  if (t.status == Status::kBlocked) {
-    oss << ",\"block_reason\":\"" << json_escape(t.block_reason) << "\"";
-  }
-
-  if (!t.detail.empty()) {
-    oss << ",\"detail\":\"" << json_escape(t.detail) << "\"";
+  if (t.status == Status::kWaiting || t.status == Status::kAbandoned) {
+    oss << ",\"reason\":\"" << json_escape(t.reason) << "\"";
   }
 
   oss << '}';
   return oss.str();
 }
 
-static std::string ids_to_json_array(const std::vector<std::string>& ids) {
+static std::string ok_empty() { return "{\"ok\":true}"; }
+static std::string ok_deleted(const std::vector<std::string>& deleted) {
   std::ostringstream oss;
-  oss << '[';
-  for (size_t i = 0; i < ids.size(); ++i) {
+  oss << "{\"ok\":true,\"deleted\":" << ids_to_json_array(deleted) << '}';
+  return oss.str();
+}
+
+static std::string ok_updated(const std::vector<Task>& updated) {
+  std::ostringstream oss;
+  oss << "{\"ok\":true,\"updated\":[";
+  for (size_t i = 0; i < updated.size(); ++i) {
     if (i) oss << ',';
-    oss << "\"" << json_escape(ids[i]) << "\"";
+    oss << task_to_json(updated[i]);
   }
-  oss << ']';
+  oss << "]}";
+  return oss.str();
+}
+
+static std::string ok_created(const Task& created) {
+  std::ostringstream oss;
+  oss << "{\"ok\":true,\"created\":" << task_to_json(created) << '}';
   return oss.str();
 }
 
 } // namespace
 
-PlanAddTasksFunction::PlanAddTasksFunction(PlanModel* plan) : plan_(plan) {
-  spec_.name = "plan.add_tasks";
-  spec_.description = "Add one or more tasks to the plan.";
+PlanAddTaskFunction::PlanAddTaskFunction(PlanModel* plan) : plan_(plan) {
+  spec_.name = "plan.add_task";
+  spec_.description = "Add one top-level task.";
   spec_.parameters_json =
       "{"
       "\"type\":\"object\","
       "\"properties\":{"
-      "\"tasks\":{"
-      "\"type\":\"array\","
-      "\"items\":{"
+      "\"name\":{\"type\":\"string\"},"
+      "\"description\":{\"type\":\"string\"},"
+      "\"goal\":{\"type\":\"string\"},"
+      "\"report_to\":{\"type\":\"string\"},"
+      "\"depends_on\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}"
+      "},"
+      "\"required\":[\"name\",\"description\",\"goal\",\"report_to\"]"
+      "}";
+}
+
+const agent::FunctionSpec& PlanAddTaskFunction::spec() const { return spec_; }
+
+void PlanAddTaskFunction::InvokeAsync(std::string arguments_json, OnDone done) {
+  AddTaskInput in;
+  in.name = extract_json_string_or_empty(arguments_json, "name");
+  in.description = extract_json_string_or_empty(arguments_json, "description");
+  in.goal = extract_json_string_or_empty(arguments_json, "goal");
+
+  const std::string report_to = extract_json_string_or_empty(arguments_json, "report_to");
+  if (!report_to.empty()) in.report_to = report_to;
+
+  in.depends_on = extract_json_string_array_or_empty(arguments_json, "depends_on");
+
+  const AddTaskResult r = plan_->AddTask(in);
+  if (!r.error.empty()) {
+    std::move(done)("", r.error);
+    return;
+  }
+
+  std::move(done)(ok_created(r.created), "");
+}
+
+PlanAddSubtaskFunction::PlanAddSubtaskFunction(PlanModel* plan) : plan_(plan) {
+  spec_.name = "plan.add_subtask";
+  spec_.description = "Add one subtask under a parent.";
+  spec_.parameters_json =
+      "{"
       "\"type\":\"object\","
       "\"properties\":{"
-      "\"title\":{\"type\":\"string\"},"
-      "\"detail\":{\"type\":\"string\"},"
       "\"parent_id\":{\"type\":\"string\"},"
-      "\"depends_on\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},"
-      "\"report_to\":{\"type\":\"string\"}"
+      "\"name\":{\"type\":\"string\"},"
+      "\"description\":{\"type\":\"string\"},"
+      "\"goal\":{\"type\":\"string\"},"
+      "\"depends_on\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}"
       "},"
-      "\"required\":[\"title\"]"
-      "}"
-      "}"
-      "},"
-      "\"required\":[\"tasks\"]"
+      "\"required\":[\"parent_id\",\"name\",\"description\",\"goal\"]"
       "}";
 }
 
-const agent::FunctionSpec& PlanAddTasksFunction::spec() const { return spec_; }
+const agent::FunctionSpec& PlanAddSubtaskFunction::spec() const { return spec_; }
 
-void PlanAddTasksFunction::InvokeAsync(std::string arguments_json, OnDone done) {
-  std::string out_result_json;
-  std::string out_error;
-  const auto tasks = extract_tasks_array_objects(arguments_json);
-  if (tasks.empty()) {
-    out_error = "Missing argument: tasks";
-    std::move(done)("", std::move(out_error));
-    return;
-  }
+void PlanAddSubtaskFunction::InvokeAsync(std::string arguments_json, OnDone done) {
+  AddSubtaskInput in;
+  in.parent_id = extract_json_string_or_empty(arguments_json, "parent_id");
+  in.name = extract_json_string_or_empty(arguments_json, "name");
+  in.description = extract_json_string_or_empty(arguments_json, "description");
+  in.goal = extract_json_string_or_empty(arguments_json, "goal");
+  in.depends_on = extract_json_string_array_or_empty(arguments_json, "depends_on");
 
-  std::vector<AddTaskInput> inputs;
-  inputs.reserve(tasks.size());
-  for (const auto& t : tasks) {
-    AddTaskInput in;
-    in.title = extract_json_string_or_empty(t, "title");
-    in.detail = extract_json_string_or_empty(t, "detail");
-
-    const std::string parent = extract_json_string_or_empty(t, "parent_id");
-    if (!parent.empty()) in.parent_id = parent;
-
-    in.depends_on = extract_json_string_array_or_empty(t, "depends_on");
-
-    const std::string report_to = extract_json_string_or_empty(t, "report_to");
-    if (!report_to.empty()) in.report_to = report_to;
-
-    inputs.push_back(std::move(in));
-  }
-
-  const AddTasksResult r = plan_->AddTasks(inputs);
+  const AddSubtaskResult r = plan_->AddSubtask(in);
   if (!r.error.empty()) {
-    out_error = r.error;
-    std::move(done)("", std::move(out_error));
+    std::move(done)("", r.error);
     return;
   }
 
-  std::ostringstream oss;
-  oss << '{';
-  oss << "\"created\":[";
-  for (size_t i = 0; i < r.created.size(); ++i) {
-    if (i) oss << ',';
-    oss << task_to_json(r.created[i]);
-  }
-  oss << ']';
-
-  oss << ",\"warnings\":[";
-  for (size_t i = 0; i < r.warnings.size(); ++i) {
-    if (i) oss << ',';
-    oss << "\"" << json_escape(r.warnings[i]) << "\"";
-  }
-  oss << ']';
-
-  oss << '}';
-
-  out_result_json = oss.str();
-  std::move(done)(std::move(out_result_json), "");
+  std::move(done)(ok_created(r.created), "");
 }
 
-PlanSetStatusFunction::PlanSetStatusFunction(PlanModel* plan) : plan_(plan) {
-  spec_.name = "plan.set_status";
-  spec_.description = "Set task status with dependency rules and cascading effects.";
+PlanActivateTaskFunction::PlanActivateTaskFunction(PlanModel* plan) : plan_(plan) {
+  spec_.name = "plan.activate_task";
+  spec_.description = "Activate a task (subtask activation auto-activates its ancestor chain).";
   spec_.parameters_json =
       "{"
       "\"type\":\"object\","
       "\"properties\":{"
-      "\"task_id\":{\"type\":\"string\"},"
-      "\"status\":{\"type\":\"string\",\"enum\":[\"pending\",\"not_ready\",\"blocked\",\"in_progress\",\"done\",\"canceled\",\"failed\"]},"
-      "\"block_reason\":{\"type\":\"string\"}"
+      "\"id\":{\"type\":\"string\"}"
       "},"
-      "\"required\":[\"task_id\",\"status\"]"
+      "\"required\":[\"id\"]"
       "}";
 }
 
-const agent::FunctionSpec& PlanSetStatusFunction::spec() const { return spec_; }
+const agent::FunctionSpec& PlanActivateTaskFunction::spec() const { return spec_; }
 
-void PlanSetStatusFunction::InvokeAsync(std::string arguments_json, OnDone done) {
-  std::string out_result_json;
-  std::string out_error;
-  const std::string task_id = extract_json_string_or_empty(arguments_json, "task_id");
-  if (task_id.empty()) {
-    out_error = "Missing argument: task_id";
-    std::move(done)("", std::move(out_error));
+void PlanActivateTaskFunction::InvokeAsync(std::string arguments_json, OnDone done) {
+  const std::string id = extract_json_string_or_empty(arguments_json, "id");
+  if (id.empty()) {
+    std::move(done)("", "Missing argument: id");
     return;
   }
 
-  const std::string status_s = extract_json_string_or_empty(arguments_json, "status");
-  Status st;
-  if (!parse_status(status_s, &st)) {
-    out_error = "Invalid argument: status";
-    std::move(done)("", std::move(out_error));
-    return;
-  }
-
-  const std::string block_reason = extract_json_string_or_empty(arguments_json, "block_reason");
-
-  const SetStatusResult r = plan_->SetStatus(task_id, st, block_reason);
+  const ActivateResult r = plan_->ActivateTask(id);
   if (!r.error.empty()) {
-    out_error = r.error;
-    std::move(done)("", std::move(out_error));
+    std::move(done)("", r.error);
     return;
   }
 
-  std::ostringstream oss;
-  oss << '{';
-  oss << "\"updated\":[";
-  for (size_t i = 0; i < r.updated.size(); ++i) {
-    if (i) oss << ',';
-    oss << task_to_json(r.updated[i]);
+  std::move(done)(ok_updated(r.updated), "");
+}
+
+PlanSuspendTaskFunction::PlanSuspendTaskFunction(PlanModel* plan) : plan_(plan) {
+  spec_.name = "plan.suspend_task";
+  spec_.description = "Suspend an active task into waiting with a required reason.";
+  spec_.parameters_json =
+      "{"
+      "\"type\":\"object\","
+      "\"properties\":{"
+      "\"id\":{\"type\":\"string\"},"
+      "\"reason\":{\"type\":\"string\"}"
+      "},"
+      "\"required\":[\"id\",\"reason\"]"
+      "}";
+}
+
+const agent::FunctionSpec& PlanSuspendTaskFunction::spec() const { return spec_; }
+
+void PlanSuspendTaskFunction::InvokeAsync(std::string arguments_json, OnDone done) {
+  const std::string id = extract_json_string_or_empty(arguments_json, "id");
+  const std::string reason = extract_json_string_or_empty(arguments_json, "reason");
+  if (id.empty()) {
+    std::move(done)("", "Missing argument: id");
+    return;
   }
-  oss << ']';
 
-  oss << ",\"canceled_cascade\":[";
-  for (size_t i = 0; i < r.canceled_cascade.size(); ++i) {
-    if (i) oss << ',';
-    oss << task_to_json(r.canceled_cascade[i]);
+  const SimpleResult r = plan_->SuspendTask(id, reason);
+  if (!r.error.empty()) {
+    std::move(done)("", r.error);
+    return;
   }
-  oss << ']';
 
-  oss << ",\"deleted\":" << ids_to_json_array(r.deleted);
+  std::move(done)(ok_updated(r.updated), "");
+}
 
-  oss << ",\"normalized\":[";
-  for (size_t i = 0; i < r.normalized.size(); ++i) {
-    if (i) oss << ',';
-    oss << task_to_json(r.normalized[i]);
+PlanResumeTaskFunction::PlanResumeTaskFunction(PlanModel* plan) : plan_(plan) {
+  spec_.name = "plan.resume_task";
+  spec_.description = "Resume a waiting task back to ready.";
+  spec_.parameters_json =
+      "{"
+      "\"type\":\"object\","
+      "\"properties\":{"
+      "\"id\":{\"type\":\"string\"}"
+      "},"
+      "\"required\":[\"id\"]"
+      "}";
+}
+
+const agent::FunctionSpec& PlanResumeTaskFunction::spec() const { return spec_; }
+
+void PlanResumeTaskFunction::InvokeAsync(std::string arguments_json, OnDone done) {
+  const std::string id = extract_json_string_or_empty(arguments_json, "id");
+  if (id.empty()) {
+    std::move(done)("", "Missing argument: id");
+    return;
   }
-  oss << ']';
 
-  oss << ",\"warnings\":[";
-  for (size_t i = 0; i < r.warnings.size(); ++i) {
-    if (i) oss << ',';
-    oss << "\"" << json_escape(r.warnings[i]) << "\"";
+  const SimpleResult r = plan_->ResumeTask(id);
+  if (!r.error.empty()) {
+    std::move(done)("", r.error);
+    return;
   }
-  oss << ']';
 
-  oss << '}';
+  std::move(done)(ok_updated(r.updated), "");
+}
 
-  out_result_json = oss.str();
-  std::move(done)(std::move(out_result_json), "");
+PlanCompleteTaskFunction::PlanCompleteTaskFunction(PlanModel* plan) : plan_(plan) {
+  spec_.name = "plan.complete_task";
+  spec_.description = "Complete an active task.";
+  spec_.parameters_json =
+      "{"
+      "\"type\":\"object\","
+      "\"properties\":{"
+      "\"id\":{\"type\":\"string\"}"
+      "},"
+      "\"required\":[\"id\"]"
+      "}";
+}
+
+const agent::FunctionSpec& PlanCompleteTaskFunction::spec() const { return spec_; }
+
+void PlanCompleteTaskFunction::InvokeAsync(std::string arguments_json, OnDone done) {
+  const std::string id = extract_json_string_or_empty(arguments_json, "id");
+  if (id.empty()) {
+    std::move(done)("", "Missing argument: id");
+    return;
+  }
+
+  const SimpleResult r = plan_->CompleteTask(id);
+  if (!r.error.empty()) {
+    std::move(done)("", r.error);
+    return;
+  }
+
+  std::move(done)(ok_updated(r.updated), "");
+}
+
+PlanAbandonTaskFunction::PlanAbandonTaskFunction(PlanModel* plan) : plan_(plan) {
+  spec_.name = "plan.abandon_task";
+  spec_.description = "Abandon a task with a required reason.";
+  spec_.parameters_json =
+      "{"
+      "\"type\":\"object\","
+      "\"properties\":{"
+      "\"id\":{\"type\":\"string\"},"
+      "\"reason\":{\"type\":\"string\"}"
+      "},"
+      "\"required\":[\"id\",\"reason\"]"
+      "}";
+}
+
+const agent::FunctionSpec& PlanAbandonTaskFunction::spec() const { return spec_; }
+
+void PlanAbandonTaskFunction::InvokeAsync(std::string arguments_json, OnDone done) {
+  const std::string id = extract_json_string_or_empty(arguments_json, "id");
+  const std::string reason = extract_json_string_or_empty(arguments_json, "reason");
+  if (id.empty()) {
+    std::move(done)("", "Missing argument: id");
+    return;
+  }
+
+  const SimpleResult r = plan_->AbandonTask(id, reason);
+  if (!r.error.empty()) {
+    std::move(done)("", r.error);
+    return;
+  }
+
+  std::move(done)(ok_updated(r.updated), "");
 }
 
 PlanRemoveTaskFunction::PlanRemoveTaskFunction(PlanModel* plan) : plan_(plan) {
@@ -462,46 +412,59 @@ PlanRemoveTaskFunction::PlanRemoveTaskFunction(PlanModel* plan) : plan_(plan) {
       "{"
       "\"type\":\"object\","
       "\"properties\":{"
-      "\"task_id\":{\"type\":\"string\"}"
+      "\"id\":{\"type\":\"string\"}"
       "},"
-      "\"required\":[\"task_id\"]"
+      "\"required\":[\"id\"]"
       "}";
 }
 
 const agent::FunctionSpec& PlanRemoveTaskFunction::spec() const { return spec_; }
 
 void PlanRemoveTaskFunction::InvokeAsync(std::string arguments_json, OnDone done) {
-  std::string out_result_json;
-  std::string out_error;
-  const std::string task_id = extract_json_string_or_empty(arguments_json, "task_id");
-  if (task_id.empty()) {
-    out_error = "Missing argument: task_id";
-    std::move(done)("", std::move(out_error));
+  const std::string id = extract_json_string_or_empty(arguments_json, "id");
+  if (id.empty()) {
+    std::move(done)("", "Missing argument: id");
     return;
   }
 
-  const RemoveTaskResult r = plan_->RemoveTask(task_id);
+  const RemoveTaskResult r = plan_->RemoveTask(id);
   if (!r.error.empty()) {
-    out_error = r.error;
-    std::move(done)("", std::move(out_error));
+    std::move(done)("", r.error);
     return;
   }
 
-  std::ostringstream oss;
-  oss << '{';
-  oss << "\"deleted\":" << ids_to_json_array(r.deleted);
+  std::move(done)(ok_deleted(r.deleted), "");
+}
 
-  oss << ",\"warnings\":[";
-  for (size_t i = 0; i < r.warnings.size(); ++i) {
-    if (i) oss << ',';
-    oss << "\"" << json_escape(r.warnings[i]) << "\"";
+PlanClearSubtasksFunction::PlanClearSubtasksFunction(PlanModel* plan) : plan_(plan) {
+  spec_.name = "plan.clear_subtasks";
+  spec_.description = "Clear all subtasks under a parent (deletes entire subtask subtree).";
+  spec_.parameters_json =
+      "{"
+      "\"type\":\"object\","
+      "\"properties\":{"
+      "\"parent_id\":{\"type\":\"string\"}"
+      "},"
+      "\"required\":[\"parent_id\"]"
+      "}";
+}
+
+const agent::FunctionSpec& PlanClearSubtasksFunction::spec() const { return spec_; }
+
+void PlanClearSubtasksFunction::InvokeAsync(std::string arguments_json, OnDone done) {
+  const std::string parent_id = extract_json_string_or_empty(arguments_json, "parent_id");
+  if (parent_id.empty()) {
+    std::move(done)("", "Missing argument: parent_id");
+    return;
   }
-  oss << ']';
 
-  oss << '}';
+  const ClearSubtasksResult r = plan_->ClearSubtasks(parent_id);
+  if (!r.error.empty()) {
+    std::move(done)("", r.error);
+    return;
+  }
 
-  out_result_json = oss.str();
-  std::move(done)(std::move(out_result_json), "");
+  std::move(done)(ok_deleted(r.deleted), "");
 }
 
 } // namespace agent::plan2

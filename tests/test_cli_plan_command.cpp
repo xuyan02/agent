@@ -39,5 +39,10 @@ int main() {
   // Smoke: command routed and produced some output (may be empty if no tasks).
   assert(!console.out.empty());
 
+  console.out.clear();
+  runtime.OnCliLine("/prompt");
+  // System prompt must include at least the plan header.
+  assert(console.out.find("## Plan") != std::string::npos);
+
   return 0;
 }

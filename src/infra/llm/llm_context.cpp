@@ -8,7 +8,7 @@ namespace agent {
 namespace {
 
 bool DebugLlm() {
-  const char* v = std::getenv("CPP_AGENT_DEBUG_LLM");
+  const char* v = std::getenv("CPP_AGENT_DEBUG_LLM_VERBOSE");
   return v && *v && strcmp(v, "0") != 0;
 }
 

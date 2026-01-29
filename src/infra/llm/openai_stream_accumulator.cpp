@@ -61,7 +61,7 @@ bool OpenAIStreamAccumulator::FeedDataLine(const std::string& data_line, OpenAIS
     return true;
   }
 
-  const bool dbg = std::getenv("CPP_AGENT_DEBUG_LLM") != nullptr;
+  const bool dbg = std::getenv("CPP_AGENT_DEBUG_LLM_VERBOSE") != nullptr;
 
   // Parse delta object from the SSE JSON line.
   auto delta_opt = extract_delta_obj(data_line);
@@ -142,7 +142,7 @@ bool OpenAIStreamAccumulator::FeedDataLine(const std::string& data_line, OpenAIS
 }
 
 bool OpenAIStreamAccumulator::HasToolCalls() const {
-  const bool dbg = std::getenv("CPP_AGENT_DEBUG_LLM") != nullptr;
+  const bool dbg = std::getenv("CPP_AGENT_DEBUG_LLM_VERBOSE") != nullptr;
   if (dbg) {
     std::cerr << "[cpp-agent.llm] HasToolCalls tool_calls_.size=" << tool_calls_.size() << "\n";
     for (size_t i = 0; i < tool_calls_.size(); i++) {

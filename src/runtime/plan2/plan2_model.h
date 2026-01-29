@@ -9,20 +9,31 @@
 namespace agent::plan2 {
 
 enum class Status {
-  kPending,
-  kNotReady,
+  // Blocked by dependency constraints (depends_on not satisfied).
   kBlocked,
-  kInProgress,
+
+  // Ready to be worked on.
+  kReady,
+
+  // Currently executing.
+  kActive,
+
+  // Explicitly waiting for external info/artifact.
+  kWaiting,
+
+  // Terminal.
   kDone,
-  kCanceled,
-  kFailed,
+  kAbandoned,
 };
+
+std::string StatusToString(Status s);
 
 struct Task {
   std::string id; // UUID
 
-  std::string title;
-  std::string detail;
+  std::string name;
+  std::string description;
+  std::string goal;
 
   std::optional<std::string> parent_id; // UUID
   std::vector<std::string> depends_on;  // UUID list (siblings only)
@@ -30,13 +41,16 @@ struct Task {
   // Required for top-level tasks only. Forbidden for non-top-level tasks.
   std::optional<std::string> report_to;
 
-  Status status{Status::kPending};
-  std::string block_reason; // required iff status == kBlocked
+  Status status{Status::kReady};
+
+  // Required iff status == kWaiting or status == kAbandoned.
+  std::string reason;
 };
 
 struct AddTaskInput {
-  std::string title;
-  std::string detail;
+  std::string name;
+  std::string description;
+  std::string goal;
 
   std::optional<std::string> parent_id;
   std::vector<std::string> depends_on;
@@ -44,17 +58,36 @@ struct AddTaskInput {
   std::optional<std::string> report_to;
 };
 
-struct AddTasksResult {
-  std::vector<Task> created;
+struct AddTaskResult {
+  Task created;
   std::vector<std::string> warnings;
   std::string error;
 };
 
-struct SetStatusResult {
+struct AddSubtaskInput {
+  std::string parent_id; // required
+
+  std::string name;
+  std::string description;
+  std::string goal;
+
+  std::vector<std::string> depends_on;
+};
+
+struct AddSubtaskResult {
+  Task created;
+  std::vector<std::string> warnings;
+  std::string error;
+};
+
+struct ActivateResult {
   std::vector<Task> updated;
-  std::vector<Task> canceled_cascade;
-  std::vector<std::string> deleted;
-  std::vector<Task> normalized;
+  std::vector<std::string> warnings;
+  std::string error;
+};
+
+struct SimpleResult {
+  std::vector<Task> updated;
   std::vector<std::string> warnings;
   std::string error;
 };
@@ -65,13 +98,27 @@ struct RemoveTaskResult {
   std::string error;
 };
 
+struct ClearSubtasksResult {
+  std::vector<std::string> deleted;
+  std::vector<std::string> warnings;
+  std::string error;
+};
+
 class PlanModel {
 public:
   PlanModel();
 
-  AddTasksResult AddTasks(const std::vector<AddTaskInput>& inputs);
-  SetStatusResult SetStatus(const std::string& task_id, Status status, std::string block_reason);
+  AddTaskResult AddTask(const AddTaskInput& in);
+  AddSubtaskResult AddSubtask(const AddSubtaskInput& in);
+
+  ActivateResult ActivateTask(const std::string& task_id);
+  SimpleResult SuspendTask(const std::string& task_id, std::string reason);
+  SimpleResult ResumeTask(const std::string& task_id);
+  SimpleResult CompleteTask(const std::string& task_id);
+  SimpleResult AbandonTask(const std::string& task_id, std::string reason);
+
   RemoveTaskResult RemoveTask(const std::string& task_id);
+  ClearSubtasksResult ClearSubtasks(const std::string& parent_id);
 
   // Rendering for system prompt.
   std::string RenderMarkdown() const;
@@ -92,8 +139,7 @@ private:
 
   Status ComputeInitialStatus(const AddTaskInput& in) const;
 
-  void NormalizeSiblings(const std::optional<std::string>& parent_id,
-                         SetStatusResult* inout);
+  void NormalizeSiblings(const std::optional<std::string>& parent_id, std::vector<Task>* out_updated);
 
   std::vector<std::string> DirectDependentsOf(const std::string& task_id) const;
   std::vector<std::string> TransitiveDependentsClosure(const std::string& task_id) const;
@@ -101,7 +147,6 @@ private:
   std::vector<std::string> CollectSubtreeIds(const std::string& task_id) const;
   void HardDeleteSubtree(const std::string& task_id, std::vector<std::string>* deleted);
 
-  void CascadingCancelDependents(const std::string& task_id, SetStatusResult* out);
 
   // Insertion order of tasks (all tasks, including subtasks).
   std::vector<std::string> insertion_order_;

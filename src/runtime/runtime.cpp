@@ -59,6 +59,20 @@ void Runtime::OnCliLine(const std::string& line) {
     return;
   }
 
+  if (line == "/prompt" || line == "/prompt leader") {
+    auto* leader = team_->Find(team_->leader());
+    if (!leader) {
+      std::cerr << "error: leader not found: " << team_->leader() << "\n";
+      return;
+    }
+    const std::string prompt = leader->GetSystemPrompt();
+    console_.Print(prompt);
+    if (!prompt.empty() && prompt.back() != '\n') {
+      console_.PrintLine("");
+    }
+    return;
+  }
+
   std::string target;
   std::string payload;
 

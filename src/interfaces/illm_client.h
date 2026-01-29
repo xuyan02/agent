@@ -9,7 +9,7 @@ namespace agent {
 
 struct LlmOptions {
   std::string model;
-  double temperature{0.2};
+  double temperature{0.0};
 };
 
 struct LlmResponse {
