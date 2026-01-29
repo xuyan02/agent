@@ -38,9 +38,6 @@ bool Agent::StartLlmRequest(std::string model,
                             agent::LlmRequest::OnDone on_done) {
   if (active_req_) return false;
 
-  std::cerr << "[cpp-agent.llm] StartLlmRequest Create agent=" << name_ << " this=" << this
-            << " model=" << model << " msgs=" << messages.size() << " tools=" << GetTools().size() << "\n";
-
   active_req_ = runtime().llm().Create(std::move(model),
                                       std::move(messages),
                                       GetTools(),
@@ -48,8 +45,6 @@ bool Agent::StartLlmRequest(std::string model,
                                       std::move(on_tool_calls),
                                       std::move(on_done));
 
-  std::cerr << "[cpp-agent.llm] StartLlmRequest Create done agent=" << name_ << " this=" << this
-            << " ok=" << (active_req_ ? 1 : 0) << "\n";
   return active_req_ != nullptr;
 }
 

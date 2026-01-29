@@ -28,6 +28,21 @@ std::optional<std::string> GetStringAllowMissing(const nlohmann::json& obj, cons
   return it->get<std::string>();
 }
 
+std::optional<std::vector<std::string>> GetStringArray(const nlohmann::json& obj, const char* key) {
+  if (!obj.is_object()) return std::nullopt;
+  auto it = obj.find(key);
+  if (it == obj.end()) return std::nullopt;
+  if (!it->is_array()) return std::nullopt;
+
+  std::vector<std::string> out;
+  out.reserve(it->size());
+  for (const auto& v : *it) {
+    if (!v.is_string()) return std::nullopt;
+    out.push_back(v.get<std::string>());
+  }
+  return out;
+}
+
 std::optional<std::vector<std::string>> GetStringArrayAllowMissing(const nlohmann::json& obj,
                                                                    const char* key) {
   if (!obj.is_object()) return std::nullopt;

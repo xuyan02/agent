@@ -65,13 +65,18 @@ bool SkillRegistry::LoadFromDir(const std::filesystem::path& skills_dir) {
       continue;
     }
 
-    auto tools_opt = agent::json::GetStringArrayAllowMissing(root, "tools");
     std::vector<std::string> tools;
-    if (!tools_opt.has_value()) {
-      std::cerr << "error: skill json invalid tools (expect string array): " << ent.path().string() << "\n";
-      continue;
+    // tools is optional.
+    // - missing: ok (empty)
+    // - present but invalid: error
+    if (root.is_object() && root.contains("tools")) {
+      auto tools_opt = agent::json::GetStringArray(root, "tools");
+      if (!tools_opt.has_value()) {
+        std::cerr << "error: skill json invalid tools (expect string array): " << ent.path().string() << "\n";
+        continue;
+      }
+      tools = std::move(*tools_opt);
     }
-    if (tools_opt) tools = std::move(*tools_opt);
 
     std::string name = std::move(*name_opt);
     std::string description = std::move(*desc_opt);

@@ -8,6 +8,8 @@
 
 #include "dust/message_loop/message_loop.h"
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
 #include <cctype>
 #include <iostream>
@@ -90,16 +92,25 @@ std::vector<std::string> GeneralAgent::GetActiveTools() const {
 }
 
 void GeneralAgent::TryStartRequest() {
-  if (HasActiveRequest()) return;
-  if (!pending_tool_calls_.empty()) return;
+  if (in_flight_) return;
 
-  if (queue_.empty()) return;
+  SendUserBatchRequest();
+}
 
-  // Continue conversation history across batches.
+void GeneralAgent::SendUserBatchRequest() {
+  in_flight_ = true;
+
   out_buf_.clear();
-  round_mode_ = RoundMode::kUnknown;
 
-  const std::string user_prompt = agent::BuildAgentBatchInput(&queue_);
+  had_tool_calls_ = false;
+  pending_tool_call_count_ = 0;
+
+  std::string user_prompt;
+  if (queue_.empty()) {
+    user_prompt = "[resume]\n";
+  } else {
+    user_prompt = agent::BuildAgentBatchInput(&queue_);
+  }
   const std::string system_prompt = GetSystemPrompt();
 
   // Ensure a single system message at the beginning.
@@ -112,7 +123,39 @@ void GeneralAgent::TryStartRequest() {
   llm_history_.push_back({.role = LlmRole::kUser, .content = user_prompt});
   TrimHistory();
 
-  StartRound(llm_history_);
+  auto on_token = [this](std::string tok) { OnToken(tok); };
+
+  auto on_tool_calls = [this](std::vector<LlmToolCall> tool_calls) { OnToolCalls(std::move(tool_calls)); };
+
+  auto on_done = [this]() { OnRequestDone(); };
+
+  if (!StartLlmRequest(model_,
+                       llm_history_,
+                       std::move(on_token),
+                       std::move(on_tool_calls),
+                       std::move(on_done))) {
+    std::cerr << "error: failed to create llm request\n";
+    return;
+  }
+}
+
+void GeneralAgent::SendToolReplyRequest() {
+  out_buf_.clear();
+
+  auto on_token = [this](std::string tok) { OnToken(tok); };
+
+  auto on_tool_calls = [this](std::vector<LlmToolCall> tool_calls) { OnToolCalls(std::move(tool_calls)); };
+
+  auto on_done = [this]() { OnRequestDone(); };
+
+  if (!StartLlmRequest(model_,
+                       llm_history_,
+                       std::move(on_token),
+                       std::move(on_tool_calls),
+                       std::move(on_done))) {
+    std::cerr << "error: failed to create llm request\n";
+    return;
+  }
 }
 
 void GeneralAgent::TrimHistory() {
@@ -134,81 +177,35 @@ void GeneralAgent::TrimHistory() {
   llm_history_ = std::move(kept);
 }
 
-void GeneralAgent::StartRound(std::vector<LlmMessage> msgs) {
-  if (HasActiveRequest()) return;
-
-  std::cerr << "[cpp-agent.llm] StartRound msgs=" << msgs.size();
-  if (!msgs.empty()) {
-    std::cerr << " last.role="
-              << (msgs.back().role == LlmRole::kSystem
-                      ? "system"
-                      : (msgs.back().role == LlmRole::kUser
-                                 ? "user"
-                                 : (msgs.back().role == LlmRole::kAssistant ? "assistant" : "tool")));
-    if (msgs.back().role == LlmRole::kAssistant) {
-      std::cerr << " last.tool_calls=" << msgs.back().tool_calls.size();
-    }
-    if (msgs.back().role == LlmRole::kTool && msgs.back().tool_result.has_value()) {
-      std::cerr << " last.tool_call_id=" << msgs.back().tool_result->tool_call_id;
-    }
-  }
-  std::cerr << "\n";
-
-  round_mode_ = RoundMode::kUnknown;
-
-  auto on_token = [this](std::string tok) {
-    if (round_mode_ == RoundMode::kUnknown) {
-      round_mode_ = RoundMode::kAssistantText;
-      std::cerr << "[cpp-agent.llm] round mode -> assistant_text\n";
-    }
-    if (round_mode_ != RoundMode::kAssistantText) return;
-    OnToken(tok);
-  };
-
-  auto on_tool_calls = [this](std::vector<LlmToolCall> tool_calls) {
-    if (round_mode_ != RoundMode::kToolCall) {
-      round_mode_ = RoundMode::kToolCall;
-      std::cerr << "[cpp-agent.llm] round mode -> tool_call\n";
-    }
-    OnToolCalls(std::move(tool_calls));
-  };
-
-  auto on_done = [this]() { OnRequestDone(); };
-
-  std::cerr << "[cpp-agent.llm] StartRound -> StartLlmRequest agent=" << name() << " this=" << this
-            << " model=" << model_ << " msgs=" << msgs.size() << "\n";
-
-  if (!StartLlmRequest(model_,
-                       std::move(msgs),
-                       std::move(on_token),
-                       std::move(on_tool_calls),
-                       std::move(on_done))) {
-    std::cerr << "error: failed to create llm request\n";
-    return;
-  }
-}
-
 void GeneralAgent::OnRequestDone() {
   CancelActiveRequest();
 
-  std::cerr << "[cpp-agent.llm] round done mode="
-            << (round_mode_ == RoundMode::kToolCall
-                    ? "tool_call"
-                    : (round_mode_ == RoundMode::kAssistantText ? "assistant_text" : "unknown"))
-            << "\n";
+  const bool had_tool_calls = had_tool_calls_;
 
-  if (round_mode_ == RoundMode::kToolCall) {
-    // Tool execution / next round is driven by OnToolCalls + ExecuteNextToolCall().
+  if (had_tool_calls) {
+    had_tool_calls_ = false;
+
+    if (pending_tool_call_count_ == 0) {
+      SendToolReplyRequest();
+    }
     return;
   }
 
-  // Persist final assistant message into conversation history.
+  // Final assistant text round.
+  in_flight_ = false;
+
+  // Control frame: if assistant replies with [pause], stop auto-driving new rounds.
+  // [pause] must be the only output (per skill protocol).
+  if (out_buf_ == "[pause]\n" || out_buf_ == "[pause]") {
+    out_buf_.clear();
+    return;
+  }
+
   if (!out_buf_.empty()) {
     llm_history_.push_back({.role = LlmRole::kAssistant, .content = out_buf_});
     TrimHistory();
   }
 
-  // Final round: parse once at the end.
   auto out = agent::ParseAgentMultiTargetOutput(name(), out_buf_);
   if (!out_buf_.empty() && out.empty()) {
     std::cerr << "error: agent output dropped (missing @to: header). "
@@ -224,7 +221,6 @@ void GeneralAgent::OnRequestDone() {
   }
   out_buf_.clear();
 
-  // Next tick: try to process any queued messages accumulated while streaming.
   auto* loop = dust::MessageLoop::Current();
   if (!loop) {
     std::cerr << "error: no MessageLoop::Current()\n";
@@ -234,10 +230,82 @@ void GeneralAgent::OnRequestDone() {
 }
 
 
+static std::string build_tool_error_json(const std::string& msg) {
+  // OpenAI-compatible: tool message content is a string. We embed a JSON object as a string.
+  nlohmann::json j;
+  j["error"] = msg;
+  return j.dump();
+}
+
+void GeneralAgent::OnToolCalls(std::vector<LlmToolCall> tool_calls) {
+  if (tool_calls.empty()) return;
+
+  had_tool_calls_ = true;
+
+  LlmMessage assistant;
+  assistant.role = LlmRole::kAssistant;
+  assistant.tool_calls = tool_calls;
+  llm_history_.push_back(std::move(assistant));
+
+  ExecuteToolCalls(std::move(tool_calls));
+}
+
+void GeneralAgent::ExecuteToolCalls(std::vector<LlmToolCall> tool_calls) {
+  pending_tool_call_count_ += tool_calls.size();
+
+  // Find all tools on demand (simple and stable; list is tiny).
+  const auto tools = GetTools();
+
+  for (const auto& tc : tool_calls) {
+    FunctionPtr fn;
+    for (const auto& t : tools) {
+      fn = t.FindFunctionByName(tc.name);
+      if (fn) break;
+    }
+
+    if (!fn) {
+      LlmMessage tool_msg;
+      tool_msg.role = LlmRole::kTool;
+      tool_msg.tool_result = LlmToolResult{.tool_call_id = tc.id,
+                                           .content = build_tool_error_json("Unknown tool: " + tc.name)};
+      llm_history_.push_back(std::move(tool_msg));
+
+      pending_tool_call_count_--;
+      if (pending_tool_call_count_ == 0 && had_tool_calls_ == false) {
+        SendToolReplyRequest();
+      }
+      continue;
+    }
+
+    std::string args = tc.arguments_json;
+    std::string tool_call_id = tc.id;
+
+    fn->InvokeAsync(std::move(args),
+                    [this, tool_call_id = std::move(tool_call_id)](std::string out_result_json,
+                                                                  std::string out_error) {
+      LlmMessage tool_msg;
+      tool_msg.role = LlmRole::kTool;
+
+      if (!out_error.empty()) {
+        tool_msg.tool_result = LlmToolResult{.tool_call_id = tool_call_id,
+                                             .content = build_tool_error_json(out_error)};
+      } else {
+        tool_msg.tool_result = LlmToolResult{.tool_call_id = tool_call_id,
+                                             .content = std::move(out_result_json)};
+      }
+
+      llm_history_.push_back(std::move(tool_msg));
+
+      pending_tool_call_count_--;
+      if (pending_tool_call_count_ == 0 && had_tool_calls_ == false) {
+        SendToolReplyRequest();
+      }
+    });
+  }
+}
+
 void GeneralAgent::OnToken(const std::string& tok) {
   if (tok.empty()) return;
-
-  // Keep streaming tokens until request completes, then parse once at the end.
   out_buf_ += tok;
 }
 

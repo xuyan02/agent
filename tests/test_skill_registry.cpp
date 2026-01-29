@@ -28,6 +28,7 @@ int main() {
   const auto dir = make_temp_dir();
 
   // Valid skill.
+  // tools is optional.
   write_file(dir / "a.json", R"JSON({
     "name": "a",
     "description": "desc",
@@ -35,11 +36,27 @@ int main() {
   })JSON");
   write_file(dir / "a.md", "hello\n");
 
-  // Invalid skill (missing md).
+  // Invalid skill: missing md.
   write_file(dir / "b.json", R"JSON({
     "name": "b",
     "description": "desc",
     "prompt_md": "missing.md"
+  })JSON");
+
+  // Invalid skill: tools present but wrong type.
+  write_file(dir / "c.json", R"JSON({
+    "name": "c",
+    "description": "desc",
+    "prompt_md": "a.md",
+    "tools": "not_array"
+  })JSON");
+
+  // Invalid skill: tools array contains non-string.
+  write_file(dir / "d.json", R"JSON({
+    "name": "d",
+    "description": "desc",
+    "prompt_md": "a.md",
+    "tools": ["ok", 1]
   })JSON");
 
   agent::SkillRegistry reg;
@@ -57,6 +74,16 @@ int main() {
   {
     const auto* b = reg.Find("b");
     assert(!b);
+  }
+
+  {
+    const auto* c = reg.Find("c");
+    assert(!c);
+  }
+
+  {
+    const auto* d = reg.Find("d");
+    assert(!d);
   }
 
   return 0;

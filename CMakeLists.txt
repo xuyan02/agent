@@ -17,8 +17,8 @@ add_library(cpp_agent_lib
 
   src/runtime/agent.cpp
   src/runtime/general_agent.cpp
-  src/runtime/general_agent_tool_loop.cpp
   src/runtime/message_codec.cpp
+  src/runtime/tool.cpp
   src/runtime/professional_agent.cpp
   src/runtime/runtime.cpp
   src/runtime/team.cpp
@@ -225,6 +225,13 @@ if(CPP_AGENT_BUILD_TESTS)
   target_link_libraries(cpp-agent-tests-general-agent-history PRIVATE cpp_agent_lib)
   target_compile_options(cpp-agent-tests-general-agent-history PRIVATE -fno-exceptions -g)
   add_test(NAME cpp-agent-tests-general-agent-history COMMAND cpp-agent-tests-general-agent-history)
+
+  add_executable(cpp-agent-tests-general-agent-resume-pause
+    tests/test_general_agent_resume_pause.cpp
+  )
+  target_link_libraries(cpp-agent-tests-general-agent-resume-pause PRIVATE cpp_agent_lib)
+  target_compile_options(cpp-agent-tests-general-agent-resume-pause PRIVATE -fno-exceptions -g)
+  add_test(NAME cpp-agent-tests-general-agent-resume-pause COMMAND cpp-agent-tests-general-agent-resume-pause)
 
   # Tool calling disabled in streaming-only mode for now.
   # add_executable(cpp-agent-tests-agent-tool-loop

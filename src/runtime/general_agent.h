@@ -18,6 +18,8 @@ public:
                std::string model);
   ~GeneralAgent() override;
 
+  std::string RenderPlanMarkdown() const;
+
   std::string GetSystemPrompt() const override;
   std::vector<Tool> GetTools() override;
 
@@ -27,30 +29,26 @@ public:
   void Input(const Message& msg);
 
 private:
-  enum class RoundMode {
-    kUnknown,
-    kAssistantText,
-    kToolCall,
-  };
-
   void TryStartRequest();
-  void StartRound(std::vector<LlmMessage> msgs);
+
+  void SendUserBatchRequest();
+  void SendToolReplyRequest();
+
   void TrimHistory();
 
   void OnToolCalls(std::vector<LlmToolCall> tool_calls);
   void OnRequestDone();
 
   void ExecuteToolCalls(std::vector<LlmToolCall> tool_calls);
-  void ExecuteNextToolCall();
 
   void OnToken(const std::string& tok);
 
   std::vector<LlmMessage> llm_history_;
   size_t max_history_messages_{40};
-  RoundMode round_mode_{RoundMode::kUnknown};
 
-  std::vector<LlmToolCall> pending_tool_calls_;
-  size_t pending_tool_call_idx_{0};
+  bool in_flight_{false};
+  bool had_tool_calls_{false};
+  size_t pending_tool_call_count_{0};
 
   std::string out_buf_;
 

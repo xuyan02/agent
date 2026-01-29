@@ -18,6 +18,8 @@ std::optional<nlohmann::json> Parse(const std::string& s);
 std::optional<std::string> GetString(const nlohmann::json& obj, const char* key);
 std::optional<std::string> GetStringAllowMissing(const nlohmann::json& obj, const char* key);
 
+std::optional<std::vector<std::string>> GetStringArray(const nlohmann::json& obj, const char* key);
+
 std::optional<std::vector<std::string>> GetStringArrayAllowMissing(const nlohmann::json& obj,
                                                                    const char* key);
 
