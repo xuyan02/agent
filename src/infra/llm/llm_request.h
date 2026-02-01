@@ -22,8 +22,8 @@ public:
   using OnToken = dust::Function<void(std::string)>;
 
   // Called exactly once at the end of a round if the round produced tool calls.
-  // The tool calls must be complete (arguments_json fully assembled).
-  using OnToolCalls = dust::OnceFunction<void(std::vector<LlmToolCall> tool_calls)>;
+  // The tool calls must be complete (arguments parsed and assembled).
+  using OnToolCalls = dust::OnceFunction<void(std::vector<ToolCall> tool_calls)>;
 
   using OnDone = dust::OnceFunction<void()>;
 

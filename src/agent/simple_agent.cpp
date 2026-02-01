@@ -1,12 +1,14 @@
 #include "agent/simple_agent.h"
 
+#include "infra/json/json.h"
+
 #include <iostream>
 #include <utility>
 
 namespace agent {
 
 SimpleAgent::SimpleAgent(agent::Runtime* runtime, const agent::AgentContext* ctx)
-    : Agent(runtime), ctx_(ctx) {}
+    : Agent(runtime, ctx) {}
 
 void SimpleAgent::Run(std::string input,
                      dust::OnceFunction<void(std::string answer)> on_done,
@@ -17,7 +19,7 @@ void SimpleAgent::Run(std::string input,
   }
   busy_ = true;
 
-  if (!runtime() || !ctx_) {
+  if (!runtime() || !ctx()) {
     busy_ = false;
     on_error("null_dependency");
     return;
@@ -38,15 +40,25 @@ void SimpleAgent::StartRequest() {
 
   std::vector<agent::LlmMessage> messages;
   messages.push_back(
-      agent::LlmMessage{.role = agent::LlmRole::kSystem, .content = ctx_->GetSystemPrompt()});
+      agent::LlmMessage{.role = agent::LlmRole::kSystem, .content = ctx()->GetSystemPrompt()});
   for (const auto& m : history_)
     messages.push_back(m);
 
-  auto tools = ctx_->GetTools();
+  auto tool_owners = ctx()->GetTools();
+  std::vector<agent::Tool*> tools;
+  tools.reserve(tool_owners.size());
+  for (auto& t : tool_owners) {
+    if (!t)
+      continue;
+
+    const std::string id = t->id;
+    RegisterTool(std::move(t));
+    tools.push_back(FindTool(id));
+  }
 
   auto on_token = [this](std::string delta) { assistant_msg_.content += delta; };
 
-  auto on_tool_calls = [this](std::vector<agent::LlmToolCall> tool_calls) mutable {
+  auto on_tool_calls = [this](std::vector<agent::ToolCall> tool_calls) mutable {
     // Persist the assistant tool call request to history.
     agent::LlmMessage m;
     m.role = agent::LlmRole::kAssistant;
@@ -80,7 +92,7 @@ void SimpleAgent::StartRequest() {
     std::move(pending_on_done_)(assistant_msg_.content);
   };
 
-  req_ = runtime()->CreateRequest(ctx_->GetModelName(), std::move(messages), std::move(tools),
+  req_ = runtime()->CreateRequest(ctx()->GetModelName(), std::move(messages), std::move(tools),
                                   std::move(on_token), std::move(on_tool_calls),
                                   std::move(on_done_req));
   if (!req_) {
@@ -91,43 +103,35 @@ void SimpleAgent::StartRequest() {
   }
 }
 
-void SimpleAgent::OnToolCalls(std::vector<agent::LlmToolCall> tool_calls) {
+void SimpleAgent::OnToolCalls(std::vector<agent::ToolCall> tool_calls) {
   req_.reset();
-  ExecuteToolCalls(/*index=*/0, std::move(tool_calls));
-}
 
-void SimpleAgent::ExecuteToolCalls(size_t index, std::vector<agent::LlmToolCall> tool_calls) {
-  if (index >= tool_calls.size()) {
-    StartRequest();
-    return;
-  }
-
-  const auto tc = tool_calls[index];
-  auto* fn = runtime()->FindFunction(tc.name);
-  if (!fn) {
-    busy_ = false;
-    if (pending_on_error_)
-      std::move(pending_on_error_)("tool_not_found: " + tc.name);
-    return;
-  }
-
-  // dust::OnceFunction has a small inline storage. Avoid capturing large objects.
-  auto remaining = std::make_shared<std::vector<agent::LlmToolCall>>(std::move(tool_calls));
+  std::vector<agent::ToolCall> calls = std::move(tool_calls);
 
   auto* self = this;
-  fn->InvokeAsync(tc.arguments_json,
-                  [self, tool_call_id = tc.id, index, remaining = std::move(remaining)](
-                      std::string out_result_json, std::string out_error) mutable {
-                    agent::LlmMessage tool_msg;
-                    tool_msg.role = agent::LlmRole::kTool;
-                    tool_msg.tool_result = agent::LlmToolResult{
-                        .tool_call_id = tool_call_id,
-                        .content = out_error.empty() ? out_result_json
-                                                     : std::string{"{\"error\":\""} + out_error + "\"}"};
-                    self->history_.push_back(std::move(tool_msg));
 
-                    self->ExecuteToolCalls(index + 1, std::move(*remaining));
-                  });
+  auto exec = std::make_shared<agent::ToolCallExecutor>(
+      this,
+      [self](std::string call_id, nlohmann::json out) {
+        agent::LlmMessage tool_msg;
+        tool_msg.role = agent::LlmRole::kTool;
+        tool_msg.tool_result =
+            agent::LlmToolResult{.tool_call_id = std::move(call_id), .content = agent::json::Dump(out)};
+        self->history_.push_back(std::move(tool_msg));
+      },
+      [self](std::string call_id, std::string error) {
+        agent::LlmMessage tool_msg;
+        tool_msg.role = agent::LlmRole::kTool;
+        nlohmann::json err;
+        err["error"] = std::move(error);
+        tool_msg.tool_result =
+            agent::LlmToolResult{.tool_call_id = std::move(call_id), .content = agent::json::Dump(err)};
+        self->history_.push_back(std::move(tool_msg));
+      },
+      [self]() mutable { self->StartRequest(); });
+
+  exec->AddToolCalls(std::move(calls));
+  exec->Finish();
 }
 
 }  // namespace agent

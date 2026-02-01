@@ -1,5 +1,7 @@
 #pragma once
 
+#include "tool/tool_call.h"
+
 #include <optional>
 #include <string>
 #include <vector>
@@ -13,13 +15,6 @@ enum class LlmRole {
   kTool,
 };
 
-struct LlmToolCall {
-  std::string id;
-  std::string name;
-  // Raw JSON object string (no surrounding quotes).
-  std::string arguments_json;
-};
-
 struct LlmToolResult {
   std::string tool_call_id;
   // OpenAI-compatible: tool message content is a string (can contain JSON text).
@@ -31,7 +26,7 @@ struct LlmMessage {
   std::string content;
 
   // For assistant messages that request tool calls.
-  std::vector<LlmToolCall> tool_calls;
+  std::vector<ToolCall> tool_calls;
 
   // For tool messages (result of a tool call).
   std::optional<LlmToolResult> tool_result;

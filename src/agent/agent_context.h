@@ -1,6 +1,6 @@
 #pragma once
 
-#include "runtime/tool.h"
+#include "tool/tool.h"
 
 #include <string>
 #include <vector>
@@ -13,7 +13,7 @@ class AgentContext {
 
   virtual std::string GetModelName() const = 0;
   virtual std::string GetSystemPrompt() const = 0;
-  virtual std::vector<Tool> GetTools() const = 0;
+  virtual std::vector<ToolPtr> GetTools() const = 0;
 };
 
 }  // namespace agent

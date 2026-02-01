@@ -10,14 +10,15 @@ option(CPP_AGENT_BUILD_TESTS "Build tests" ON)
 
 add_library(cpp_agent_lib
   src/agent/agent.cpp
-  src/agent/intuitive_agent.cpp
-  src/agent/prompt_overrides.cpp
-  src/agent/routing_result.cpp
-  src/agent/shallow_think_agent.cpp
   src/agent/simple_agent.cpp
-  src/agent/smart_agent.cpp
+  src/agent/smart/intuitive_agent.cpp
+  src/agent/smart/prompt_overrides.cpp
+  src/agent/smart/routing_result.cpp
+  src/agent/smart/shallow_think_agent.cpp
+  src/agent/smart/smart_agent.cpp
   src/runtime/runtime.cpp
-  src/runtime/tool.cpp
+  src/tool/tool.cpp
+  src/tool/tool_call_executor.cpp
   src/infra/json/json.cpp
   src/infra/llm/llm_config_loader.cpp
   src/infra/llm/llm_context.cpp
@@ -25,7 +26,6 @@ add_library(cpp_agent_lib
   src/infra/llm/openai_provider_factory.cpp
   src/infra/llm/openai_stream_accumulator.cpp
   src/infra/llm/sse_parser.cpp
-  src/infra/http/openai_client.cpp
   src/infra/http_async/async_client.cc
 )
 target_include_directories(cpp_agent_lib PUBLIC src)

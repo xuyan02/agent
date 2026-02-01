@@ -1,5 +1,5 @@
 #include "agent/agent_context.h"
-#include "agent/smart_agent.h"
+#include "agent/smart/smart_agent.h"
 
 #include "dust/message_loop/linux_message_pump_epoll.h"
 #include "dust/message_loop/message_loop.h"
@@ -22,7 +22,7 @@ class SimpleAgentContext final : public agent::AgentContext {
 
   std::string GetModelName() const override { return model_name_; }
   std::string GetSystemPrompt() const override { return system_prompt_; }
-  std::vector<agent::Tool> GetTools() const override { return {}; }
+  std::vector<agent::ToolPtr> GetTools() const override { return {}; }
 
  private:
   std::string model_name_;

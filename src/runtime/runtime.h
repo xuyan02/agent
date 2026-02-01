@@ -2,7 +2,7 @@
 
 #include "infra/llm/llm_context.h"
 #include "infra/llm/llm_request.h"
-#include "runtime/tool.h"
+#include "tool/tool.h"
 
 #include <memory>
 #include <string>
@@ -22,16 +22,16 @@ class Runtime {
 
   std::unique_ptr<agent::LlmRequest> CreateRequest(std::string model_name,
                                                    std::vector<agent::LlmMessage> messages,
-                                                   std::vector<agent::Tool> tools,
+                                                   std::vector<agent::Tool*> tools,
                                                    agent::LlmRequest::OnToken on_token,
                                                    agent::LlmRequest::OnToolCalls on_tool_calls,
                                                    agent::LlmRequest::OnDone on_done);
 
   void RegisterTool(agent::ToolPtr t);
 
-  // Find a function by its fully-qualified name (e.g. "file.read").
+  // Find a tool by its id/name (e.g. "file").
   // Returns nullptr if not found.
-  agent::Function* FindFunction(const std::string& function_name) const;
+  agent::Tool* FindTool(const std::string& tool_id) const;
 
  private:
   agent::LlmContext* llm_{nullptr};

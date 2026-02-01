@@ -2,7 +2,7 @@
 
 #include "infra/llm/llm_message.h"
 #include "infra/llm/llm_request.h"
-#include "runtime/tool.h"
+#include "tool/tool.h"
 
 #include <memory>
 #include <string>
@@ -26,7 +26,7 @@ public:
   // Must create a request that connects + sends in its constructor.
   virtual std::unique_ptr<LlmRequest> Create(std::string model_name,
                                              std::vector<LlmMessage> messages,
-                                             std::vector<agent::Tool> tools,
+                                             std::vector<agent::Tool*> tools,
                                              LlmRequest::OnToken on_token,
                                              LlmRequest::OnToolCalls on_tool_calls,
                                              LlmRequest::OnDone on_done) = 0;

@@ -10,7 +10,6 @@ namespace agent {
 
 struct OpenAIStreamDelta {
   std::string content_delta;
-  std::vector<LlmToolCall> tool_calls_delta;
   bool has_finish_reason{false};
 };
 
@@ -34,6 +33,7 @@ private:
     std::string id;
     std::string name;
     std::string arguments_json;
+    bool arguments_complete{false};
   };
 
   std::string content_;

@@ -44,7 +44,7 @@ OpenAIRequest::OpenAIRequest(std::string base_url,
                              std::string api_key,
                              std::string model_name,
                              std::vector<LlmMessage> messages,
-                             std::vector<agent::Tool> tools,
+                             std::vector<agent::Tool*> tools,
                              OnToken on_token,
                              OnToolCalls on_tool_calls,
                              OnDone on_done)
@@ -84,8 +84,10 @@ OpenAIRequest::OpenAIRequest(std::string base_url,
     oss << ",\"tools\":[";
 
     bool first = true;
-    for (const auto& tool : tools) {
-      for (const auto& fn : tool.functions) {
+    for (const auto* tool : tools) {
+      if (!tool)
+        continue;
+      for (const auto& fn : tool->functions()) {
         if (!fn)
           continue;
         const auto& spec = fn->spec();
@@ -146,7 +148,7 @@ OpenAIRequest::OpenAIRequest(std::string base_url,
                 << "\",\"arguments\":";
 
         // Arguments must be a JSON string value in OpenAI schema.
-        msg_oss << "\"" << JsonEscapeString(tc.arguments_json) << "\"";
+        msg_oss << "\"" << JsonEscapeString(tc.arguments.dump()) << "\"";
         msg_oss << "}}";
       }
       msg_oss << ']';
@@ -254,7 +256,7 @@ bool OpenAIRequest::HandleSseDataLine(const std::string& data_line) {
         for (size_t i = 0; i < msg.tool_calls.size(); i++) {
           const auto& tc = msg.tool_calls[i];
           std::cerr << "[cpp-agent.llm]  tc[" << i << "] id=" << tc.id << " name=" << tc.name
-                    << " args.len=" << tc.arguments_json.size() << "\n";
+                    << " args.len=" << tc.arguments.dump().size() << "\n";
         }
       }
       std::move(on_tool_calls_)(std::move(msg.tool_calls));
@@ -281,7 +283,7 @@ bool OpenAIProvider::SupportsModel(const std::string& model_name) const {
 
 std::unique_ptr<LlmRequest> OpenAIProvider::Create(std::string model_name,
                                                    std::vector<LlmMessage> messages,
-                                                   std::vector<agent::Tool> tools,
+                                                   std::vector<agent::Tool*> tools,
                                                    LlmRequest::OnToken on_token,
                                                    LlmRequest::OnToolCalls on_tool_calls,
                                                    LlmRequest::OnDone on_done) {

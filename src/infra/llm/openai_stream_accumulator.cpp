@@ -80,6 +80,12 @@ bool OpenAIStreamAccumulator::FeedDataLine(const std::string& data_line, OpenAIS
   auto fr_opt = extract_finish_reason(data_line);
   if (fr_opt && !fr_opt->empty()) {
     if (out_delta) out_delta->has_finish_reason = true;
+
+    // Mark tool arguments complete (if any) once the model finishes the round.
+    for (auto& tc : tool_calls_) {
+      if (!tc.arguments_json.empty())
+        tc.arguments_complete = true;
+    }
   }
 
   // tool_calls delta
@@ -126,12 +132,10 @@ bool OpenAIStreamAccumulator::FeedDataLine(const std::string& data_line, OpenAIS
             std::cerr << "[cpp-agent.llm] tc.delta idx=" << idx << " args.delta.len=" << args_chunk.size()
                       << " args.total.len=" << tool_calls_[idx].arguments_json.size() << "\n";
           }
+
+          // NOTE: We only emit tool calls once the arguments JSON is complete and parsed.
           if (out_delta) {
-            LlmToolCall tc;
-            tc.id = tool_calls_[idx].id;
-            tc.name = tool_calls_[idx].name;
-            tc.arguments_json = args_chunk;
-            out_delta->tool_calls_delta.push_back(std::move(tc));
+            (void)out_delta;
           }
         }
       }
@@ -148,7 +152,8 @@ bool OpenAIStreamAccumulator::HasToolCalls() const {
     for (size_t i = 0; i < tool_calls_.size(); i++) {
       const auto& tc = tool_calls_[i];
       std::cerr << "[cpp-agent.llm]  acc.tc[" << i << "] id.len=" << tc.id.size()
-                << " name.len=" << tc.name.size() << " args.len=" << tc.arguments_json.size() << "\n";
+                << " name.len=" << tc.name.size() << " args.json.len=" << tc.arguments_json.size()
+                << " args.complete=" << (tc.arguments_complete ? 1 : 0) << "\n";
     }
   }
 
@@ -163,11 +168,20 @@ LlmMessage OpenAIStreamAccumulator::BuildAssistantMessage() const {
   m.role = LlmRole::kAssistant;
   m.content = content_;
   for (const auto& tc : tool_calls_) {
-    if (tc.name.empty() && tc.id.empty() && tc.arguments_json.empty()) continue;
-    LlmToolCall out;
+    if (tc.name.empty() && tc.id.empty() && tc.arguments_json.empty())
+      continue;
+
+    ToolCall out;
     out.id = tc.id;
     out.name = tc.name;
-    out.arguments_json = tc.arguments_json;
+
+    if (tc.arguments_complete) {
+      auto args_opt = agent::json::Parse(tc.arguments_json);
+      if (args_opt && args_opt->is_object()) {
+        out.arguments = std::move(*args_opt);
+      }
+    }
+
     m.tool_calls.push_back(std::move(out));
   }
   return m;

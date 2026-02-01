@@ -34,7 +34,7 @@ const LlmProviderFactory* LlmContext::FindProviderFactory(const std::string& pro
 
 std::unique_ptr<LlmRequest> LlmContext::Create(std::string model_name,
                                               std::vector<LlmMessage> messages,
-                                              std::vector<agent::Tool> tools,
+                                              std::vector<agent::Tool*> tools,
                                               LlmRequest::OnToken on_token,
                                               LlmRequest::OnToolCalls on_tool_calls,
                                               LlmRequest::OnDone on_done) {

@@ -23,7 +23,7 @@ public:
                 std::string api_key,
                 std::string model_name,
                 std::vector<LlmMessage> messages,
-                std::vector<agent::Tool> tools,
+                std::vector<agent::Tool*> tools,
                 OnToken on_token,
                 OnToolCalls on_tool_calls,
                 OnDone on_done);
@@ -60,7 +60,7 @@ public:
   bool SupportsModel(const std::string& model_name) const override;
   std::unique_ptr<LlmRequest> Create(std::string model_name,
                                      std::vector<LlmMessage> messages,
-                                     std::vector<agent::Tool> tools,
+                                     std::vector<agent::Tool*> tools,
                                      LlmRequest::OnToken on_token,
                                      LlmRequest::OnToolCalls on_tool_calls,
                                      LlmRequest::OnDone on_done) override;

@@ -2,7 +2,7 @@
 
 #include "infra/llm/llm_message.h"
 #include "infra/llm/llm_request.h"
-#include "runtime/tool.h"
+#include "tool/tool.h"
 
 #include <memory>
 #include <string>

@@ -4,6 +4,8 @@
 #include "agent/agent_context.h"
 
 #include "infra/llm/llm_message.h"
+#include "tool/tool_call.h"
+#include "tool/tool_call_executor.h"
 
 #include <memory>
 #include <string>
@@ -19,17 +21,13 @@ class SimpleAgent final : public Agent {
            dust::OnceFunction<void(std::string error)> on_error) override;
 
  private:
-  const agent::AgentContext* ctx_{nullptr};
-
   // Current in-flight callbacks for this agent run.
   dust::OnceFunction<void(std::string answer)> pending_on_done_;
   dust::OnceFunction<void(std::string error)> pending_on_error_;
 
   void StartRequest();
 
-  void OnToolCalls(std::vector<agent::LlmToolCall> tool_calls);
-
-  void ExecuteToolCalls(size_t index, std::vector<agent::LlmToolCall> tool_calls);
+  void OnToolCalls(std::vector<agent::ToolCall> tool_calls);
 
   std::vector<agent::LlmMessage> history_;
 
