@@ -1,10 +1,10 @@
 #include "runtime/professional_agent.h"
 
-#include "infra/llm/llm_message.h"
+#include "llm/llm_message.h"
 #include "runtime/runtime.h"
 #include "runtime/team.h"
 
-#include "infra/console/cli_console.h"
+#include "console/cli_console.h"
 
 #include <cassert>
 #include <memory>

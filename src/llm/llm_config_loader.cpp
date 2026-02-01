@@ -1,9 +1,9 @@
-#include "infra/llm/llm_config_loader.h"
+#include "llm/llm_config_loader.h"
 
-#include "infra/llm/llm_provider_factory.h"
+#include "llm/llm_provider_factory.h"
 
-#include "infra/llm/file_io.h"
-#include "infra/json/json.h"
+#include "llm/file_io.h"
+#include "json/json.h"
 
 #include <nlohmann/json.hpp>
 

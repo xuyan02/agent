@@ -1,4 +1,3 @@
-#include "agent/agent_context.h"
 #include "agent/smart/intuitive_agent.h"
 
 #include "dust/message_loop/linux_message_pump_epoll.h"
@@ -7,29 +6,14 @@
 #include <cstdio>
 #include <memory>
 
-namespace {
-
-class ThinkToolAgentContext final : public agent::AgentContext {
- public:
-  std::string GetModelName() const override { return "gpt-4o-mini"; }
-
-  std::string GetSystemPrompt() const override {
-    return "You are a test harness.";
-  }
-
-};
-
-}  // namespace
 
 int main() {
   auto pump = std::make_unique<dust::LinuxMessagePumpEpoll>();
   dust::MessageLoop loop(std::move(pump));
+  agent::Runtime runtime("");
+  runtime.Init();
 
-  ThinkToolAgentContext ctx;
-  agent::LlmContext llm_ctx;
-  agent::Runtime runtime(&llm_ctx);
-
-  agent::IntuitiveAgent intuitive(&runtime, &ctx);
+  agent::IntuitiveAgent intuitive(&runtime, /*smart=*/nullptr);
 
   intuitive.Run(
       "Please briefly explain what a mutex is in C++. If you cannot, call shallow_think.think.",

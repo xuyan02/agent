@@ -1,7 +1,7 @@
 #pragma once
 
-#include "infra/llm/llm_message.h"
-#include "infra/llm/llm_request.h"
+#include "llm/llm_message.h"
+#include "llm/llm_request.h"
 #include "tool/tool.h"
 
 #include <memory>

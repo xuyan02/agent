@@ -1,6 +1,6 @@
 #pragma once
 
-#include "infra/llm/llm_context.h"
+#include "llm/llm_context.h"
 
 #include <filesystem>
 

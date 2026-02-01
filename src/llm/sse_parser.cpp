@@ -1,4 +1,4 @@
-#include "infra/llm/sse_parser.h"
+#include "llm/sse_parser.h"
 
 #include <utility>
 

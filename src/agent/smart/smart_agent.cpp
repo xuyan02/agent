@@ -9,10 +9,11 @@
 
 namespace agent {
 
-SmartAgent::SmartAgent(agent::Runtime* runtime, const agent::AgentContext* ctx)
-    : Agent(runtime, ctx),
-      intuitive_(std::make_unique<agent::IntuitiveAgent>(runtime, ctx)),
-      shallow_(std::make_unique<agent::ShallowThinkAgent>(runtime, ctx)) {
+SmartAgent::SmartAgent(agent::Runtime* runtime, std::string name)
+    : Agent(runtime),
+      name_(std::move(name)),
+      intuitive_(std::make_unique<agent::IntuitiveAgent>(runtime, this)),
+      shallow_(std::make_unique<agent::ShallowThinkAgent>(runtime, this)) {
   intuitive_->RegisterTool(std::make_unique<agent::ShallowThinkTool>(this));
 }
 
@@ -22,9 +23,9 @@ void SmartAgent::RunShallowThink(std::string thought,
                                 std::string content,
                                 dust::OnceFunction<void(std::string answer)> on_done,
                                 dust::OnceFunction<void(std::string error)> on_error) {
-  if (!runtime() || !ctx()) {
+  if (!runtime()) {
     if (on_error)
-      std::move(on_error)("null_dependency");
+      std::move(on_error)("null_runtime");
     return;
   }
 
@@ -50,9 +51,9 @@ void SmartAgent::Run(std::string input,
   }
   busy_ = true;
 
-  if (!runtime() || !ctx()) {
+  if (!runtime()) {
     busy_ = false;
-    on_error("null_dependency");
+    on_error("null_runtime");
     return;
   }
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "infra/llm/llm_provider.h"
+#include "llm/llm_provider.h"
 
 #include <memory>
 #include <string>

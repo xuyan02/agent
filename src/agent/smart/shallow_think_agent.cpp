@@ -1,31 +1,29 @@
 #include "agent/smart/shallow_think_agent.h"
 
-#include "agent/smart/prompt_overrides.h"
+#include "agent/smart/smart_agent.h"
 
 #include <utility>
 
 namespace agent {
 
-namespace {
+ShallowThinkAgent::ShallowThinkAgent(agent::Runtime* runtime, const agent::SmartAgent* smart)
+    : agent::SimpleAgent(runtime), smart_(smart) {}
 
-std::string BuildShallowSystemPrompt() {
-  return R"PROMPT(You are ShallowThinkAgent.
-
-Task:
-- Decide whether you can answer the user directly with shallow reasoning.
-- If you can: answer the user naturally.
-
-Rules:
-- Do NOT include chain-of-thought.
-- Do NOT output JSON.
-- Reply in the same language as the user.
-)PROMPT";
+std::string ShallowThinkAgent::GetName() const {
+  if (!smart_)
+    return {};
+  return smart_->GetName();
 }
 
-}  // namespace
+std::string ShallowThinkAgent::GetModel() const {
+  return "gpt-4o";
+}
 
-ShallowThinkAgent::ShallowThinkAgent(agent::Runtime* runtime, const agent::AgentContext* base_ctx)
-    : agent::SimpleAgent(runtime, base_ctx) {}
+std::string ShallowThinkAgent::GetAgentPrompt() const {
+  if (!runtime())
+    return {};
+  return runtime()->GetPrompt("shallow_think");
+}
 
 std::vector<std::string> ShallowThinkAgent::GetActiveToolNames() const {
   return {};
@@ -34,12 +32,7 @@ std::vector<std::string> ShallowThinkAgent::GetActiveToolNames() const {
 void ShallowThinkAgent::Run(std::string input,
                             dust::OnceFunction<void(std::string answer)> on_done,
                             dust::OnceFunction<void(std::string error)> on_error) {
-  PromptOverrideAgentContext ctx(this->ctx(), BuildShallowSystemPrompt(), /*tools_enabled=*/false);
-
-  const agent::AgentContext* prev = ctx_;
-  ctx_ = &ctx;
   agent::SimpleAgent::Run(std::move(input), std::move(on_done), std::move(on_error));
-  ctx_ = prev;
 }
 
 }  // namespace agent

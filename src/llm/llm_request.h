@@ -4,7 +4,7 @@
 
 #include "dust/functional/closure.h"
 
-#include "infra/llm/llm_message.h"
+#include "llm/llm_message.h"
 
 #include <string>
 #include <vector>

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "agent/agent.h"
-#include "agent/agent_context.h"
 #include "agent/smart/intuitive_agent.h"
 #include "agent/smart/shallow_think_agent.h"
 
@@ -12,8 +11,10 @@ namespace agent {
 
 class SmartAgent final : public Agent {
  public:
-  SmartAgent(agent::Runtime* runtime, const agent::AgentContext* ctx);
+  SmartAgent(agent::Runtime* runtime, std::string name);
   ~SmartAgent() override;
+
+  const std::string& GetName() const { return name_; }
 
   void Run(std::string input,
            dust::OnceFunction<void(std::string answer)> on_done,
@@ -25,6 +26,7 @@ class SmartAgent final : public Agent {
                       dust::OnceFunction<void(std::string error)> on_error);
 
  private:
+  std::string name_;
   bool busy_{false};
 
   std::unique_ptr<agent::IntuitiveAgent> intuitive_;

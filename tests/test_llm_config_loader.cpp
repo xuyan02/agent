@@ -1,6 +1,6 @@
-#include "infra/llm/llm_config_loader.h"
-#include "infra/llm/llm_message.h"
-#include "infra/llm/llm_provider_factory.h"
+#include "llm/llm_config_loader.h"
+#include "llm/llm_message.h"
+#include "llm/llm_provider_factory.h"
 
 #include <cassert>
 #include <filesystem>

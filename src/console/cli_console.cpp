@@ -1,4 +1,4 @@
-#include "infra/console/cli_console.h"
+#include "console/cli_console.h"
 
 #include "dust/message_loop/watch_callbacks.h"
 

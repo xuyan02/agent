@@ -2,7 +2,7 @@
 
 #include "agent/smart/routing_result_parse.h"
 
-#include "infra/json/json.h"
+#include "json/json.h"
 
 #include <optional>
 #include <string>

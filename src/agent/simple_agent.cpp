@@ -1,14 +1,22 @@
 #include "agent/simple_agent.h"
 
-#include "infra/json/json.h"
+#include "json/json.h"
 
 #include <iostream>
 #include <utility>
 
 namespace agent {
 
-SimpleAgent::SimpleAgent(agent::Runtime* runtime, const agent::AgentContext* ctx)
-    : Agent(runtime, ctx) {}
+SimpleAgent::SimpleAgent(agent::Runtime* runtime) : Agent(runtime) {}
+
+
+std::string SimpleAgent::GetSystemPrompt() const {
+  return "You are " + GetName() + "\n\n" + GetAgentPrompt();
+}
+
+std::string SimpleAgent::GetAgentPrompt() const {
+  return {};
+}
 
 std::vector<std::string> SimpleAgent::GetActiveToolNames() const {
   return {};
@@ -34,9 +42,9 @@ void SimpleAgent::Run(std::string input,
   }
   busy_ = true;
 
-  if (!runtime() || !ctx()) {
+  if (!runtime()) {
     busy_ = false;
-    on_error("null_dependency");
+    on_error("null_runtime");
     return;
   }
 
@@ -54,8 +62,7 @@ void SimpleAgent::StartRequest() {
   assistant_msg_.role = agent::LlmRole::kAssistant;
 
   std::vector<agent::LlmMessage> messages;
-  messages.push_back(
-      agent::LlmMessage{.role = agent::LlmRole::kSystem, .content = ctx()->GetSystemPrompt()});
+  messages.push_back(agent::LlmMessage{.role = agent::LlmRole::kSystem, .content = GetSystemPrompt()});
   for (const auto& m : history_)
     messages.push_back(m);
 
@@ -104,7 +111,7 @@ void SimpleAgent::StartRequest() {
     std::move(pending_on_done_)(assistant_msg_.content);
   };
 
-  req_ = runtime()->CreateRequest(ctx()->GetModelName(), std::move(messages), std::move(tools),
+  req_ = runtime()->CreateRequest(GetModel(), std::move(messages), std::move(tools),
                                   std::move(on_token), std::move(on_tool_calls),
                                   std::move(on_done_req));
   if (!req_) {

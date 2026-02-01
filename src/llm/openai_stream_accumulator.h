@@ -1,6 +1,6 @@
 #pragma once
 
-#include "infra/llm/llm_message.h"
+#include "llm/llm_message.h"
 
 #include <optional>
 #include <string>

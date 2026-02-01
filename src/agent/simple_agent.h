@@ -1,9 +1,8 @@
 #pragma once
 
 #include "agent/agent.h"
-#include "agent/agent_context.h"
 
-#include "infra/llm/llm_message.h"
+#include "llm/llm_message.h"
 #include "tool/tool_call.h"
 #include "tool/tool_call_executor.h"
 
@@ -14,7 +13,14 @@ namespace agent {
 
 class SimpleAgent : public Agent {
  public:
-  SimpleAgent(agent::Runtime* runtime, const agent::AgentContext* ctx);
+  explicit SimpleAgent(agent::Runtime* runtime);
+
+  virtual std::string GetName() const = 0;
+  virtual std::string GetModel() const = 0;
+
+  std::string GetSystemPrompt() const;
+
+  virtual std::string GetAgentPrompt() const;
 
   virtual std::vector<std::string> GetActiveToolNames() const;
 

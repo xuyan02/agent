@@ -1,6 +1,6 @@
 #pragma once
 
-#include "infra/llm/llm_provider_factory.h"
+#include "llm/llm_provider_factory.h"
 
 namespace agent {
 

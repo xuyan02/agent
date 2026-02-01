@@ -2,8 +2,7 @@
 
 namespace agent {
 
-Agent::Agent(agent::Runtime* runtime, const agent::AgentContext* ctx)
-    : runtime_(runtime), ctx_(ctx) {}
+Agent::Agent(agent::Runtime* runtime) : runtime_(runtime) {}
 
 agent::Runtime* Agent::runtime() {
   return runtime_;

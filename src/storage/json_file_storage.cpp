@@ -1,4 +1,4 @@
-#include "infra/storage/json_file_storage.h"
+#include "storage/json_file_storage.h"
 
 #include <chrono>
 #include <fstream>

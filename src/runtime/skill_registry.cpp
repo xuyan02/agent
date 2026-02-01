@@ -1,7 +1,7 @@
 #include "runtime/skill_registry.h"
 
-#include "infra/llm/file_io.h"
-#include "infra/json/json.h"
+#include "llm/file_io.h"
+#include "json/json.h"
 
 #include <nlohmann/json.hpp>
 

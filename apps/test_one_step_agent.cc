@@ -1,11 +1,8 @@
-#include "agent/agent_context.h"
 #include "agent/smart/smart_agent.h"
 
 #include "dust/message_loop/linux_message_pump_epoll.h"
 #include "dust/message_loop/message_loop.h"
 
-#include "infra/llm/llm_config_loader.h"
-#include "infra/llm/openai_provider_factory.h"
 
 #include <filesystem>
 #include <iostream>
@@ -13,30 +10,13 @@
 #include <string>
 #include <vector>
 
-namespace {
-
-class SimpleAgentContext final : public agent::AgentContext {
- public:
-  SimpleAgentContext(std::string model_name, std::string system_prompt)
-      : model_name_(std::move(model_name)), system_prompt_(std::move(system_prompt)) {}
-
-  std::string GetModelName() const override { return model_name_; }
-  std::string GetSystemPrompt() const override { return system_prompt_; }
-
- private:
-  std::string model_name_;
-  std::string system_prompt_;
-};
-
-}  // namespace
 
 int main(int argc, char** argv) {
-  std::filesystem::path cfg_path = "config/llm_providers.json";
   std::string model_name;
   std::string user_input_arg;
 
   if (argc >= 2) {
-    cfg_path = argv[1];
+    // argv[1] reserved for future flags.
   }
   if (argc >= 3) {
     model_name = argv[2];
@@ -45,13 +25,9 @@ int main(int argc, char** argv) {
     user_input_arg = argv[3];
   }
 
-  agent::LlmContext llm;
-  llm.RegisterFactory(std::make_unique<agent::OpenAIProviderFactory>());
-
-  std::cerr << "config: " << cfg_path << std::endl;
-
-  if (!agent::RegisterProvidersFromConfig(llm, cfg_path)) {
-    std::cerr << "failed to load providers from: " << cfg_path << std::endl;
+  agent::Runtime runtime("");
+  if (!runtime.Init()) {
+    std::cerr << "failed to init runtime" << std::endl;
     std::cerr << "hint: copy config/llm_providers.example.json to config/llm_providers.json and "
                  "set env vars"
               << std::endl;
@@ -65,13 +41,14 @@ int main(int argc, char** argv) {
 
   std::cerr << "model: " << model_name << std::endl;
 
-  agent::Runtime runtime(&llm);
 
   const std::string system_prompt =
       "You are an assistant.\n";
 
-  SimpleAgentContext ctx(model_name, system_prompt);
-  agent::SmartAgent one_step(&runtime, &ctx);
+  (void)model_name;
+  (void)system_prompt;
+
+  agent::SmartAgent one_step(&runtime, "one_step");
 
   dust::MessageLoop loop(std::make_unique<dust::LinuxMessagePumpEpoll>());
 

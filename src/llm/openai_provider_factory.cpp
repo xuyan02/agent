@@ -1,8 +1,8 @@
-#include "infra/llm/openai_provider_factory.h"
+#include "llm/openai_provider_factory.h"
 
-#include "infra/llm/env.h"
-#include "infra/json/json.h"
-#include "infra/llm/openai_provider.h"
+#include "llm/env.h"
+#include "json/json.h"
+#include "llm/openai_provider.h"
 
 #include <nlohmann/json.hpp>
 

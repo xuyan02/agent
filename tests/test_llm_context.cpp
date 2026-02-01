@@ -1,6 +1,6 @@
-#include "infra/llm/llm_context.h"
+#include "llm/llm_context.h"
 
-#include "infra/llm/llm_message.h"
+#include "llm/llm_message.h"
 
 #include <cassert>
 #include <memory>

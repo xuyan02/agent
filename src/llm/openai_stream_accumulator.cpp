@@ -1,6 +1,6 @@
-#include "infra/llm/openai_stream_accumulator.h"
+#include "llm/openai_stream_accumulator.h"
 
-#include "infra/json/json.h"
+#include "json/json.h"
 
 #include <nlohmann/json.hpp>
 

@@ -1,4 +1,4 @@
-#include "infra/llm/openai_stream_accumulator.h"
+#include "llm/openai_stream_accumulator.h"
 
 #include <cassert>
 #include <iostream>

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "infra/llm/llm_provider.h"
-#include "infra/llm/llm_provider_factory.h"
+#include "llm/llm_provider.h"
+#include "llm/llm_provider_factory.h"
 #include "tool/tool.h"
 
 #include <memory>

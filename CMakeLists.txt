@@ -12,7 +12,6 @@ add_library(cpp_agent_lib
   src/agent/agent.cpp
   src/agent/simple_agent.cpp
   src/agent/smart/intuitive_agent.cpp
-  src/agent/smart/prompt_overrides.cpp
   src/agent/smart/routing_result.cpp
   src/agent/smart/shallow_think_agent.cpp
   src/agent/smart/smart_agent.cpp
@@ -20,14 +19,14 @@ add_library(cpp_agent_lib
   src/runtime/runtime.cpp
   src/tool/tool.cpp
   src/tool/tool_call_executor.cpp
-  src/infra/json/json.cpp
-  src/infra/llm/llm_config_loader.cpp
-  src/infra/llm/llm_context.cpp
-  src/infra/llm/openai_provider.cpp
-  src/infra/llm/openai_provider_factory.cpp
-  src/infra/llm/openai_stream_accumulator.cpp
-  src/infra/llm/sse_parser.cpp
-  src/infra/http_async/async_client.cc
+  src/json/json.cpp
+  src/llm/llm_config_loader.cpp
+  src/llm/llm_context.cpp
+  src/llm/openai_provider.cpp
+  src/llm/openai_provider_factory.cpp
+  src/llm/openai_stream_accumulator.cpp
+  src/llm/sse_parser.cpp
+  src/http_async/async_client.cc
 )
 target_include_directories(cpp_agent_lib PUBLIC src)
 

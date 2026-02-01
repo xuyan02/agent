@@ -1,6 +1,6 @@
 #include "runtime/runtime.h"
 
-#include "infra/llm/llm_context.h"
+#include "llm/llm_context.h"
 #include "interfaces/iconsole.h"
 #include "runtime/team.h"
 

@@ -1,12 +1,12 @@
 #pragma once
 
-#include "infra/llm/llm_provider.h"
+#include "llm/llm_provider.h"
 
 #include "dust/functional/closure.h"
 
-#include "infra/http_async/async_client.h"
-#include "infra/llm/openai_stream_accumulator.h"
-#include "infra/llm/sse_parser.h"
+#include "http_async/async_client.h"
+#include "llm/openai_stream_accumulator.h"
+#include "llm/sse_parser.h"
 
 #include <memory>
 #include <string>

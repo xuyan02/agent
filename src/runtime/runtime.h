@@ -1,9 +1,12 @@
 #pragma once
 
-#include "infra/llm/llm_context.h"
-#include "infra/llm/llm_request.h"
+#include "agent/agent_factory.h"
+
+#include "llm/llm_context.h"
+#include "llm/llm_request.h"
 #include "tool/tool.h"
 
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -11,11 +14,20 @@
 
 namespace agent {
 
-// Framework runtime services shared by agents.
-// Minimal v1: a thin wrapper over LlmContext::Create().
+class Agent;
+
 class Runtime {
  public:
-  explicit Runtime(agent::LlmContext* llm);
+  // If root_path is empty, the default path is computed from the current user's
+  // home directory (pw_dir) + ".agent".
+  explicit Runtime(std::string root_path);
+
+  const std::filesystem::path& GetRootPath() const { return root_path_; }
+
+  std::string GetPrompt(const std::string& name) const;
+
+  agent::LlmContext* llm() { return llm_.get(); }
+  const agent::LlmContext* llm() const { return llm_.get(); }
 
   Runtime(const Runtime&) = delete;
   Runtime& operator=(const Runtime&) = delete;
@@ -27,6 +39,14 @@ class Runtime {
                                                    agent::LlmRequest::OnToolCalls on_tool_calls,
                                                    agent::LlmRequest::OnDone on_done);
 
+  // Initializes runtime services from <root_path>/runtime.json.
+  // Returns false on any load/parse/registration error.
+  bool Init();
+
+  void RegisterAgentFactory(std::unique_ptr<agent::AgentFactory> factory);
+
+  agent::Agent* GetMainAgent() { return main_agent_.get(); }
+
   void RegisterTool(agent::ToolPtr t);
 
   // Find a tool by its id/name (e.g. "file").
@@ -34,7 +54,14 @@ class Runtime {
   agent::Tool* FindTool(const std::string& tool_id) const;
 
  private:
-  agent::LlmContext* llm_{nullptr};
+  static std::filesystem::path ComputeDefaultRootPath();
+
+  const agent::AgentFactory* FindAgentFactory(const std::string& type) const;
+
+  std::unique_ptr<agent::LlmContext> llm_;
+  std::filesystem::path root_path_;
+  std::vector<std::unique_ptr<agent::AgentFactory>> agent_factories_;
+  std::unique_ptr<agent::Agent> main_agent_;
   std::unordered_map<std::string, agent::ToolPtr> tools_;
 };
 

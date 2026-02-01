@@ -2,8 +2,6 @@
 
 #include "dust/functional/function.h"
 
-#include "agent/agent_context.h"
-
 #include "runtime/runtime.h"
 #include "tool/tool.h"
 #include "tool/tool_provider.h"
@@ -15,7 +13,7 @@ namespace agent {
 
 class Agent : public agent::ToolProvider {
  public:
-  Agent(agent::Runtime* runtime, const agent::AgentContext* ctx);
+  explicit Agent(agent::Runtime* runtime);
   virtual ~Agent() = default;
 
   Agent(const Agent&) = delete;
@@ -35,7 +33,6 @@ class Agent : public agent::ToolProvider {
   agent::Runtime* runtime();
   const agent::Runtime* runtime() const;
 
-  const agent::AgentContext* ctx() const { return ctx_; }
 
  public:
   void RegisterTool(agent::ToolPtr tool);
@@ -46,7 +43,6 @@ class Agent : public agent::ToolProvider {
 
  protected:
   agent::Runtime* runtime_;
-  const agent::AgentContext* ctx_{nullptr};
   std::vector<agent::ToolPtr> tools_;
 
  private:

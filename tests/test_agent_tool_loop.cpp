@@ -4,8 +4,8 @@
 #include "core/agent.h"
 
 #include "core/policy.h"
-#include "infra/console/cli_console.h"
-#include "infra/storage/json_file_storage.h"
+#include "console/cli_console.h"
+#include "storage/json_file_storage.h"
 #include "infra/tools/plan_toolset.h"
 #include "interfaces/illm_client.h"
 

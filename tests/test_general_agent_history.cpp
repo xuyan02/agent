@@ -1,6 +1,6 @@
 #include "runtime/general_agent.h"
 
-#include "infra/llm/llm_context.h"
+#include "llm/llm_context.h"
 #include "runtime/runtime.h"
 #include "runtime/team.h"
 #include "interfaces/iconsole.h"

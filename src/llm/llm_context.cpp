@@ -1,4 +1,4 @@
-#include "infra/llm/llm_context.h"
+#include "llm/llm_context.h"
 
 #include <cstdlib>
 #include <iostream>
