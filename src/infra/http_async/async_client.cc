@@ -31,19 +31,23 @@ struct HeaderCapture {
 static size_t WriteHeaderCb(char* ptr, size_t size, size_t nmemb, void* userdata) {
   const size_t n = size * nmemb;
   auto* cap = static_cast<HeaderCapture*>(userdata);
-  if (!cap || !cap->headers) return n;
+  if (!cap || !cap->headers)
+    return n;
 
   // Header lines include trailing \r\n.
   std::string line(ptr, n);
   // Ignore status line.
   auto colon = line.find(':');
-  if (colon == std::string::npos) return n;
+  if (colon == std::string::npos)
+    return n;
 
   std::string name = line.substr(0, colon);
   size_t i = colon + 1;
-  while (i < line.size() && (line[i] == ' ' || line[i] == '\t')) i++;
+  while (i < line.size() && (line[i] == ' ' || line[i] == '\t'))
+    i++;
   std::string value = line.substr(i);
-  while (!value.empty() && (value.back() == '\r' || value.back() == '\n')) value.pop_back();
+  while (!value.empty() && (value.back() == '\r' || value.back() == '\n'))
+    value.pop_back();
 
   cap->headers->push_back(Header{std::move(name), std::move(value)});
   return n;
@@ -82,17 +86,18 @@ struct Inflight {
 static size_t WriteBodyCb(char* ptr, size_t size, size_t nmemb, void* userdata) {
   const size_t n = size * nmemb;
   auto* in = static_cast<Inflight*>(userdata);
-  if (!in) return n;
+  if (!in)
+    return n;
 
   if (in->req.on_body_chunk) {
     const bool ok = in->req.on_body_chunk(ptr, n);
-    if (!ok) return 0; // abort
+    if (!ok)
+      return 0;  // abort
   }
 
   in->result.response.body.append(ptr, n);
   return n;
 }
-
 
 namespace {
 
@@ -104,25 +109,31 @@ bool DebugHttp() {
 const char* CurlPollToStr(int what) {
   static thread_local char buf[64];
   buf[0] = '\0';
-  if (what == CURL_POLL_REMOVE) return "REMOVE";
-  if (what & CURL_POLL_IN) strcat(buf, "IN|");
-  if (what & CURL_POLL_OUT) strcat(buf, "OUT|");
+  if (what == CURL_POLL_REMOVE)
+    return "REMOVE";
+  if (what & CURL_POLL_IN)
+    strcat(buf, "IN|");
+  if (what & CURL_POLL_OUT)
+    strcat(buf, "OUT|");
   if (what & CURL_POLL_INOUT) {
     // INOUT implies IN|OUT; keep as-is.
   }
   const size_t n = strlen(buf);
-  if (n > 0 && buf[n - 1] == '|') buf[n - 1] = '\0';
-  if (buf[0] == '\0') strcpy(buf, "(none)");
+  if (n > 0 && buf[n - 1] == '|')
+    buf[n - 1] = '\0';
+  if (buf[0] == '\0')
+    strcpy(buf, "(none)");
   return buf;
 }
 
-} // namespace
+}  // namespace
 
 static void PumpMulti(GlobalState* g, curl_socket_t s, int ev_bitmask);
 
 static int SocketCb(CURL* /*easy*/, curl_socket_t s, int what, void* userp, void* /*socketp*/) {
   auto* g = static_cast<GlobalState*>(userp);
-  if (!g || !g->loop) return 0;
+  if (!g || !g->loop)
+    return 0;
 
   if (DebugHttp()) {
     std::fprintf(stderr, "[cpp-agent.http] curl socket_cb fd=%d what=%s raw=%d\n", (int)s,
@@ -143,26 +154,18 @@ static int SocketCb(CURL* /*easy*/, curl_socket_t s, int what, void* userp, void
   dust::WatchCallbacks cbs;
 
   if (what & CURL_POLL_IN) {
-    cbs.on_readable = dust::Closure([g, s]() {
-      PumpMulti(g, s, CURL_CSELECT_IN);
-    });
+    cbs.on_readable = dust::Closure([g, s]() { PumpMulti(g, s, CURL_CSELECT_IN); });
   }
 
   if (what & CURL_POLL_OUT) {
-    cbs.on_writable = dust::Closure([g, s]() {
-      PumpMulti(g, s, CURL_CSELECT_OUT);
-    });
+    cbs.on_writable = dust::Closure([g, s]() { PumpMulti(g, s, CURL_CSELECT_OUT); });
   }
 
-  cbs.on_error = dust::Closure([g, s]() {
-    PumpMulti(g, s, CURL_CSELECT_ERR);
-  });
+  cbs.on_error = dust::Closure([g, s]() { PumpMulti(g, s, CURL_CSELECT_ERR); });
 
   if (DebugHttp()) {
     std::fprintf(stderr, "[cpp-agent.http] WatchFd fd=%d want=%s (readable=%d writable=%d)\n",
-                 (int)s,
-                 CurlPollToStr(what),
-                 (int)((what & CURL_POLL_IN) != 0),
+                 (int)s, CurlPollToStr(what), (int)((what & CURL_POLL_IN) != 0),
                  (int)((what & CURL_POLL_OUT) != 0));
   }
   g->loop->WatchFd(static_cast<int>(s), std::move(cbs));
@@ -171,7 +174,8 @@ static int SocketCb(CURL* /*easy*/, curl_socket_t s, int what, void* userp, void
 
 static int TimerCb(CURLM* /*multi*/, long timeout_ms, void* userp) {
   auto* g = static_cast<GlobalState*>(userp);
-  if (!g || !g->loop) return 0;
+  if (!g || !g->loop)
+    return 0;
 
   // Cancel any previous scheduled timer.
   const uint64_t gen = g->timer_gen.fetch_add(1) + 1;
@@ -185,13 +189,12 @@ static int TimerCb(CURLM* /*multi*/, long timeout_ms, void* userp) {
   }
 
   g->loop->task_runner()->PostDelayedTask(
-      dust::Duration::FromMilliseconds(timeout_ms),
-      dust::OnceClosure([g, gen, timeout_ms]() {
-        if (g->timer_gen.load() != gen) return;
+      dust::Duration::FromMilliseconds(timeout_ms), dust::OnceClosure([g, gen, timeout_ms]() {
+        if (g->timer_gen.load() != gen)
+          return;
         if (DebugHttp()) {
           std::fprintf(stderr, "[cpp-agent.http] timer fired gen=%llu timeout_ms=%ld\n",
-                       (unsigned long long)gen,
-                       timeout_ms);
+                       (unsigned long long)gen, timeout_ms);
         }
         PumpMulti(g, CURL_SOCKET_TIMEOUT, 0);
       }));
@@ -201,7 +204,8 @@ static int TimerCb(CURLM* /*multi*/, long timeout_ms, void* userp) {
 
 static void CompleteEasy(GlobalState* g, CURL* easy, CURLcode code) {
   auto it = g->inflight_by_easy.find(easy);
-  if (it == g->inflight_by_easy.end()) return;
+  if (it == g->inflight_by_easy.end())
+    return;
 
   Inflight* in = it->second;
   g->inflight_by_easy.erase(it);
@@ -228,7 +232,8 @@ static void CompleteEasy(GlobalState* g, CURL* easy, CURLcode code) {
   // Mark as completed so a late Call::Cancel() is a no-op.
   in->easy = nullptr;
 
-  if (in->req_headers) curl_slist_free_all(in->req_headers);
+  if (in->req_headers)
+    curl_slist_free_all(in->req_headers);
 
   auto cb = std::move(in->cb);
   Result res = std::move(in->result);
@@ -241,19 +246,22 @@ static void CompleteEasy(GlobalState* g, CURL* easy, CURLcode code) {
   // Note: We can't reach the Impl instance here; instead we rely on Cancel()
   // checking in->easy==nullptr (set above) and in->g still valid.
 
-  if (cb) cb(std::move(res));
+  if (cb)
+    cb(std::move(res));
 }
 
 static void DrainCompletions(GlobalState* g) {
   int msgs = 0;
   while (CURLMsg* msg = curl_multi_info_read(g->multi, &msgs)) {
-    if (msg->msg != CURLMSG_DONE) continue;
+    if (msg->msg != CURLMSG_DONE)
+      continue;
     CompleteEasy(g, msg->easy_handle, msg->data.result);
   }
 }
 
 static void PumpMulti(GlobalState* g, curl_socket_t s, int ev_bitmask) {
-  if (!g || !g->multi) return;
+  if (!g || !g->multi)
+    return;
 
   if (DebugHttp()) {
     std::fprintf(stderr, "[cpp-agent.http] PumpMulti fd=%d ev_bitmask=0x%x\n", (int)s, ev_bitmask);
@@ -271,7 +279,8 @@ static void PumpMulti(GlobalState* g, curl_socket_t s, int ev_bitmask) {
 }
 
 static void DieIfCurlNotOk(CURLcode rc, const char* what) {
-  if (rc == CURLE_OK) return;
+  if (rc == CURLE_OK)
+    return;
   std::fprintf(stderr, "%s: %s\n", what, curl_easy_strerror(rc));
   std::abort();
 }
@@ -293,14 +302,16 @@ static void SetupEasy(Inflight* in) {
     DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_HTTPGET, 1L), "CURLOPT_HTTPGET");
   } else if (in->req.method == "POST") {
     DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_POST, 1L), "CURLOPT_POST");
-    DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_POSTFIELDS, in->req.body.c_str()), "CURLOPT_POSTFIELDS");
+    DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_POSTFIELDS, in->req.body.c_str()),
+                   "CURLOPT_POSTFIELDS");
     DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_POSTFIELDSIZE, (long)in->req.body.size()),
                    "CURLOPT_POSTFIELDSIZE");
   } else {
     DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, in->req.method.c_str()),
                    "CURLOPT_CUSTOMREQUEST");
     if (!in->req.body.empty()) {
-      DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_POSTFIELDS, in->req.body.c_str()), "CURLOPT_POSTFIELDS");
+      DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_POSTFIELDS, in->req.body.c_str()),
+                     "CURLOPT_POSTFIELDS");
       DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_POSTFIELDSIZE, (long)in->req.body.size()),
                      "CURLOPT_POSTFIELDSIZE");
     }
@@ -309,18 +320,22 @@ static void SetupEasy(Inflight* in) {
   // Redirects.
   DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, in->req.follow_redirects ? 1L : 0L),
                  "CURLOPT_FOLLOWLOCATION");
-  DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_MAXREDIRS, (long)in->req.max_redirects), "CURLOPT_MAXREDIRS");
+  DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_MAXREDIRS, (long)in->req.max_redirects),
+                 "CURLOPT_MAXREDIRS");
 
   // Timeouts.
   if (in->req.timeout_ms.has_value()) {
-    DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_TIMEOUT_MS, (long)*in->req.timeout_ms), "CURLOPT_TIMEOUT_MS");
+    DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_TIMEOUT_MS, (long)*in->req.timeout_ms),
+                   "CURLOPT_TIMEOUT_MS");
   }
 
   // Response capture.
-  DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, &WriteBodyCb), "CURLOPT_WRITEFUNCTION");
+  DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, &WriteBodyCb),
+                 "CURLOPT_WRITEFUNCTION");
   DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_WRITEDATA, in), "CURLOPT_WRITEDATA");
 
-  DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_HEADERFUNCTION, &WriteHeaderCb), "CURLOPT_HEADERFUNCTION");
+  DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_HEADERFUNCTION, &WriteHeaderCb),
+                 "CURLOPT_HEADERFUNCTION");
   DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_HEADERDATA, &in->header_cap), "CURLOPT_HEADERDATA");
 
   // Request headers.
@@ -331,7 +346,8 @@ static void SetupEasy(Inflight* in) {
     in->req_headers = curl_slist_append(in->req_headers, line.c_str());
   }
   if (in->req_headers) {
-    DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_HTTPHEADER, in->req_headers), "CURLOPT_HTTPHEADER");
+    DieIfCurlNotOk(curl_easy_setopt(easy, CURLOPT_HTTPHEADER, in->req_headers),
+                   "CURLOPT_HTTPHEADER");
   }
 
   // Bookkeeping.
@@ -346,14 +362,16 @@ class Call::Impl {
 
   void Cancel() {
     Inflight* in = in_;
-    if (!in) return;
+    if (!in)
+      return;
 
     // Mark cancelled for both the curl completion path and any late callbacks.
     in->cancelled.store(true);
 
     // If the request already completed, CompleteEasy() will have removed it from
     // the multi handle and set in->easy to nullptr. In that case, Cancel is a no-op.
-    if (!in->easy) return;
+    if (!in->easy)
+      return;
 
     // Best-effort immediate abort.
     if (in->g && in->g->multi) {
@@ -365,12 +383,14 @@ class Call::Impl {
       in->result.error.code = ErrorCode::kCancelled;
       auto cb = std::move(in->cb);
       Result res = std::move(in->result);
-      if (in->req_headers) curl_slist_free_all(in->req_headers);
+      if (in->req_headers)
+        curl_slist_free_all(in->req_headers);
 
       delete in;
       in_ = nullptr;
 
-      if (cb) cb(std::move(res));
+      if (cb)
+        cb(std::move(res));
     }
   }
 
@@ -389,7 +409,8 @@ Call& Call::operator=(Call&&) noexcept = default;
 Call::~Call() = default;
 
 void Call::Cancel() {
-  if (impl_) impl_->Cancel();
+  if (impl_)
+    impl_->Cancel();
 }
 
 bool Call::valid() const {
@@ -420,7 +441,8 @@ class AsyncClient::Impl {
   }
 
   ~Impl() {
-    if (g_.multi) curl_multi_cleanup(g_.multi);
+    if (g_.multi)
+      curl_multi_cleanup(g_.multi);
     g_.multi = nullptr;
     curl_global_cleanup();
   }
@@ -436,7 +458,8 @@ class AsyncClient::Impl {
       Result res = std::move(in->result);
       auto once = std::move(in->cb);
       delete in;
-      if (once) once(std::move(res));
+      if (once)
+        once(std::move(res));
       return Call();
     }
 
@@ -449,12 +472,14 @@ class AsyncClient::Impl {
 
       curl_easy_cleanup(in->easy);
       in->easy = nullptr;
-      if (in->req_headers) curl_slist_free_all(in->req_headers);
+      if (in->req_headers)
+        curl_slist_free_all(in->req_headers);
 
       Result res = std::move(in->result);
       auto once = std::move(in->cb);
       delete in;
-      if (once) once(std::move(res));
+      if (once)
+        once(std::move(res));
       return Call();
     }
 

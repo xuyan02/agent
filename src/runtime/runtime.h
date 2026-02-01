@@ -1,49 +1,41 @@
 #pragma once
 
-#include "runtime/message.h"
-#include "runtime/skill_registry.h"
-#include "runtime/tool.h"
-
 #include "infra/llm/llm_context.h"
+#include "infra/llm/llm_request.h"
+#include "runtime/tool.h"
 
 #include <memory>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace agent {
-class IConsole;
-}
 
-namespace agent {
-
-class Team;
-
+// Framework runtime services shared by agents.
+// Minimal v1: a thin wrapper over LlmContext::Create().
 class Runtime {
-public:
-  Runtime(agent::IConsole& console,
-          std::unique_ptr<agent::LlmContext> llm,
-          std::filesystem::path project_root);
+ public:
+  explicit Runtime(agent::LlmContext* llm);
 
-  agent::LlmContext& llm();
-  const agent::LlmContext& llm() const;
+  Runtime(const Runtime&) = delete;
+  Runtime& operator=(const Runtime&) = delete;
 
-  void SetTeam(std::unique_ptr<Team> team);
+  std::unique_ptr<agent::LlmRequest> CreateRequest(std::string model_name,
+                                                   std::vector<agent::LlmMessage> messages,
+                                                   std::vector<agent::Tool> tools,
+                                                   agent::LlmRequest::OnToken on_token,
+                                                   agent::LlmRequest::OnToolCalls on_tool_calls,
+                                                   agent::LlmRequest::OnDone on_done);
 
-  void OnCliLine(const std::string& line);
+  void RegisterTool(agent::ToolPtr t);
 
-  void Emit(const Message& msg);
+  // Find a function by its fully-qualified name (e.g. "file.read").
+  // Returns nullptr if not found.
+  agent::Function* FindFunction(const std::string& function_name) const;
 
-  const SkillRegistry& skills() const;
-
-  std::vector<Tool> GetTools() const;
-
-private:
-  void DeliverToAgent(const Message& msg);
-
-  agent::IConsole& console_;
-  std::unique_ptr<agent::LlmContext> llm_;
-  std::unique_ptr<Team> team_;
-
-  SkillRegistry skills_;
+ private:
+  agent::LlmContext* llm_{nullptr};
+  std::unordered_map<std::string, agent::ToolPtr> tools_;
 };
 
-} // namespace agent
+}  // namespace agent

@@ -1,131 +1,44 @@
 #include "runtime/runtime.h"
 
-#include "runtime/team.h"
-
-#include "interfaces/iconsole.h"
-
-#include <cctype>
-#include <iostream>
+#include <utility>
 
 namespace agent {
 
-static std::string Trim(std::string s) {
-  size_t b = 0;
-  while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b]))) b++;
-  size_t e = s.size();
-  while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1]))) e--;
-  return s.substr(b, e - b);
+Runtime::Runtime(agent::LlmContext* llm) : llm_(llm) {}
+
+std::unique_ptr<agent::LlmRequest> Runtime::CreateRequest(
+    std::string model_name,
+    std::vector<agent::LlmMessage> messages,
+    std::vector<agent::Tool> tools,
+    agent::LlmRequest::OnToken on_token,
+    agent::LlmRequest::OnToolCalls on_tool_calls,
+    agent::LlmRequest::OnDone on_done) {
+  if (!llm_)
+    return nullptr;
+  return llm_->Create(std::move(model_name), std::move(messages), std::move(tools),
+                      std::move(on_token), std::move(on_tool_calls), std::move(on_done));
 }
 
-Runtime::Runtime(agent::IConsole& console,
-                 std::unique_ptr<agent::LlmContext> llm,
-                 std::filesystem::path project_root)
-    : console_(console), llm_(std::move(llm)) {
-  if (!llm_) {
-    std::cerr << "error: runtime created without llm\n";
-  }
+void Runtime::RegisterTool(agent::ToolPtr t) {
+  if (!t)
+    return;
 
-  const auto skills_dir = std::move(project_root) / "skills";
-  skills_.LoadFromDir(skills_dir);
+  tools_[t->id] = std::move(t);
 }
 
-agent::LlmContext& Runtime::llm() { return *llm_; }
+agent::Function* Runtime::FindFunction(const std::string& function_name) const {
+  const auto dot = function_name.find('.');
+  if (dot == std::string::npos)
+    return nullptr;
 
-const agent::LlmContext& Runtime::llm() const { return *llm_; }
+  const std::string tool_name = function_name.substr(0, dot);
+  const std::string fn_name = function_name.substr(dot + 1);
 
-const SkillRegistry& Runtime::skills() const { return skills_; }
+  auto it = tools_.find(tool_name);
+  if (it == tools_.end() || !it->second)
+    return nullptr;
 
-std::vector<Tool> Runtime::GetTools() const { return {}; }
-
-void Runtime::SetTeam(std::unique_ptr<Team> team) { team_ = std::move(team); }
-
-void Runtime::OnCliLine(const std::string& line) {
-  if (!team_) {
-    std::cerr << "error: runtime has no team\n";
-    return;
-  }
-
-  if (line == "/plan") {
-    auto* leader = team_->Find(team_->leader());
-    if (!leader) {
-      std::cerr << "error: leader not found: " << team_->leader() << "\n";
-      return;
-    }
-    const std::string md = leader->RenderPlanMarkdown();
-    console_.Print(md);
-    if (!md.empty() && md.back() != '\n') {
-      console_.PrintLine("");
-    }
-    return;
-  }
-
-  if (line == "/prompt" || line == "/prompt leader") {
-    auto* leader = team_->Find(team_->leader());
-    if (!leader) {
-      std::cerr << "error: leader not found: " << team_->leader() << "\n";
-      return;
-    }
-    const std::string prompt = leader->GetSystemPrompt();
-    console_.Print(prompt);
-    if (!prompt.empty() && prompt.back() != '\n') {
-      console_.PrintLine("");
-    }
-    return;
-  }
-
-  std::string target;
-  std::string payload;
-
-  if (!line.empty() && line[0] == '@') {
-    const auto colon = line.find(':');
-    if (colon != std::string::npos) {
-      target = Trim(line.substr(1, colon - 1));
-      payload = line.substr(colon + 1);
-      if (!payload.empty() && payload.front() == ' ') payload.erase(0, 1);
-    }
-  }
-
-  if (target.empty()) {
-    target = team_->leader();
-    payload = line;
-  }
-
-  DeliverToAgent(Message{.from = "master", .to = target, .content = payload});
+  return it->second->FindFunctionByName(function_name);
 }
 
-void Runtime::Emit(const Message& msg) {
-  if (msg.to == "master") {
-    console_.Print(msg.content);
-    return;
-  }
-
-  if (!team_) {
-    std::cerr << "error: emit to agent without team: " << msg.to << "\n";
-    return;
-  }
-
-  auto* agent = team_->Find(msg.to);
-  if (!agent) {
-    std::cerr << "error: unknown target: " << msg.to << "\n";
-    return;
-  }
-
-  DeliverToAgent(msg);
-}
-
-void Runtime::DeliverToAgent(const Message& msg) {
-  if (!team_) {
-    std::cerr << "error: deliver without team\n";
-    return;
-  }
-
-  auto* agent = team_->Find(msg.to);
-  if (!agent) {
-    std::cerr << "error: unknown agent: " << msg.to << "\n";
-    return;
-  }
-
-  agent->Input(msg);
-}
-
-} // namespace agent
+}  // namespace agent

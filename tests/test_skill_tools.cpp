@@ -6,7 +6,7 @@
 
 int main() {
   agent::SkillRegistry r;
-  r.LoadFromDir(std::filesystem::path("skills"));
+  r.LoadFromDir(std::filesystem::current_path() / "skills");
 
   const auto* plan = r.Find("plan");
   assert(plan);

@@ -1,7 +1,5 @@
 #include "infra/tools/shell_tool.h"
 
-#include "core/policy.h"
-
 #include <chrono>
 #include <cstdio>
 #include <future>
@@ -73,7 +71,13 @@ agent::ToolResult ShellTool::Invoke(const std::string& tool_call_id,
     return tr;
   }
 
-  auto decision = ctx.policy.allow_shell_command(cmd);
+  if (!ctx.allow_shell_command) {
+    tr.ok = false;
+    tr.content = "No policy: allow_shell_command";
+    return tr;
+  }
+
+  auto decision = ctx.allow_shell_command(cmd);
   if (!decision.allowed) {
     tr.ok = false;
     tr.content = decision.reason;

@@ -2,12 +2,14 @@
 
 namespace agent {
 
-FunctionPtr Tool::FindFunctionByName(const std::string& name) const {
+Function* Tool::FindFunctionByName(const std::string& name) const {
   for (const auto& f : functions) {
-    if (!f) continue;
-    if (f->spec().name == name) return f;
+    if (!f)
+      continue;
+    if (f->spec().name == name)
+      return f.get();
   }
   return nullptr;
 }
 
-} // namespace agent
+}  // namespace agent

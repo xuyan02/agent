@@ -30,6 +30,8 @@ std::string GeneralAgent::RenderPlanMarkdown() const {
 
 void GeneralAgent::Input(const Message& msg) {
   queue_.push_back(msg);
+  // Avoid re-entrancy when Input() is called while an LLM request is being built.
+  if (in_flight_) return;
   TryStartRequest();
 }
 
@@ -286,11 +288,12 @@ void GeneralAgent::OnRequestDone() {
   format_retry_count_ = 0;
 
   auto* loop = dust::MessageLoop::Current();
-  if (!loop) {
-    std::cerr << "error: no MessageLoop::Current()\n";
-    return;
+  if (loop) {
+    loop->task_runner()->PostTask([this]() { TryStartRequest(); });
+  } else {
+    // Tests may run without a MessageLoop; execute synchronously.
+    TryStartRequest();
   }
-  loop->task_runner()->PostTask([this]() { TryStartRequest(); });
 }
 
 

@@ -11,7 +11,7 @@ public:
   OpenAIClient(std::string base_url, std::string api_key);
 
   agent::LlmResponse Complete(
-      const std::vector<agent::Message>& messages,
+      const std::vector<agent::LlmMessage>& messages,
       const agent::LlmOptions& options) override;
 
   void set_tools_json(std::string tools_json);

@@ -17,13 +17,12 @@ struct FunctionSpec {
 };
 
 class Function {
-public:
+ public:
   virtual ~Function() = default;
 
   virtual const FunctionSpec& spec() const = 0;
 
-  using OnDone = dust::OnceFunction<void(std::string out_result_json,
-                                         std::string out_error)>;
+  using OnDone = dust::OnceFunction<void(std::string out_result_json, std::string out_error)>;
 
   // arguments_json: JSON object string matching parameters schema.
   // done(out_result_json, out_error)
@@ -32,6 +31,6 @@ public:
   virtual void InvokeAsync(std::string arguments_json, OnDone done) = 0;
 };
 
-using FunctionPtr = std::shared_ptr<Function>;
+using FunctionPtr = std::unique_ptr<Function>;
 
-} // namespace agent
+}  // namespace agent

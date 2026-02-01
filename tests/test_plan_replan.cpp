@@ -21,12 +21,10 @@ int main() {
 
   agent::PlanReplanTool tool(store);
 
-  agent::Policy policy(std::filesystem::current_path());
-
   auto res = tool.Invoke(
       "call1",
       "{\"no\":\"1\",\"history_line\":\"replan because x\",\"new_children\":[{\"goal\":\"ng\",\"title\":\"nt\",\"children\":[{\"goal\":\"ngc\",\"title\":\"ntc\"}]}]}",
-      agent::ToolContext{policy});
+      agent::ToolContext{});
 
   assert(res.ok);
 

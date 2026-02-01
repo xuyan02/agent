@@ -30,18 +30,18 @@ static std::string json_escape(const std::string& in) {
   return out;
 }
 
-static const char* role_to_string(agent::Role r) {
-  using agent::Role;
+static const char* role_to_string(agent::LlmRole r) {
+  using agent::LlmRole;
   switch (r) {
-  case Role::kSystem: return "system";
-  case Role::kUser: return "user";
-  case Role::kAssistant: return "assistant";
-  case Role::kTool: return "tool";
+  case LlmRole::kSystem: return "system";
+  case LlmRole::kUser: return "user";
+  case LlmRole::kAssistant: return "assistant";
+  case LlmRole::kTool: return "tool";
   }
   return "user";
 }
 
-static std::string build_request_json(const std::vector<agent::Message>& messages,
+static std::string build_request_json(const std::vector<agent::LlmMessage>& messages,
                                      const agent::LlmOptions& options,
                                      const std::string& tools_json) {
   std::ostringstream oss;
@@ -55,7 +55,7 @@ static std::string build_request_json(const std::vector<agent::Message>& message
 
     oss << "{\"role\":\"" << role_to_string(m.role) << "\",";
 
-    if (m.role == agent::Role::kAssistant && !m.tool_calls.empty()) {
+    if (m.role == agent::LlmRole::kAssistant && !m.tool_calls.empty()) {
       // OpenAI assistant tool-calling schema: {role:"assistant", tool_calls:[...], content:""}
       oss << "\"tool_calls\":[";
       bool first_tc = true;
@@ -68,7 +68,7 @@ static std::string build_request_json(const std::vector<agent::Message>& message
       oss << "],";
     }
 
-    if (m.role == agent::Role::kTool && m.tool_result) {
+    if (m.role == agent::LlmRole::kTool && m.tool_result) {
       // OpenAI tool message schema: {role:"tool", tool_call_id:"...", content:"..."}
       oss << "\"tool_call_id\":\"" << json_escape(m.tool_result->tool_call_id) << "\",";
     }
@@ -203,7 +203,7 @@ static std::string extract_raw_json_field_or_empty(const std::string& json,
 
 static bool extract_llm_response(const std::string& json, agent::LlmResponse* out) {
   *out = agent::LlmResponse{};
-  out->assistant_message.role = agent::Role::kAssistant;
+  out->assistant_message.role = agent::LlmRole::kAssistant;
 
   // Very small parser: locate first message object under choices[0].message.
   auto msg_pos = json.find("\"message\"");
@@ -231,7 +231,7 @@ static bool extract_llm_response(const std::string& json, agent::LlmResponse* ou
       if (obj_end <= i || obj_end > tool_calls_raw.size()) break;
       std::string obj = tool_calls_raw.substr(i, obj_end - i);
 
-      agent::ToolCall tc;
+      agent::LlmToolCall tc;
       tc.id = extract_json_string_field_or_empty(obj, "id");
       // name is in function.name; arguments in function.arguments
       auto fn_raw = extract_raw_json_field_or_empty(obj, "function");
@@ -264,7 +264,7 @@ void OpenAIClient::set_tools_json(std::string tools_json) {
 }
 
 agent::LlmResponse OpenAIClient::Complete(
-    const std::vector<agent::Message>& messages,
+    const std::vector<agent::LlmMessage>& messages,
     const agent::LlmOptions& options) {
   if (api_key_.empty()) {
     return {};

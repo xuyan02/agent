@@ -100,7 +100,7 @@ bool OpenAIStreamAccumulator::FeedDataLine(const std::string& data_line, OpenAIS
         idx = idx_it->get<size_t>();
       } else if (idx_it != obj.end() && idx_it->is_number_integer()) {
         const auto v = idx_it->get<long long>();
-        if (v > 0) idx = static_cast<size_t>(v);
+        if (v >= 0) idx = static_cast<size_t>(v);
       }
       EnsureToolIndex(idx);
 

@@ -33,9 +33,9 @@ int main() {
   fs::current_path(tmp);
 
   auto cfg_r = agent::load_config(cfg_path);
-  assert(cfg_r.ok());
-  assert(cfg_r.value().llm.providers_json_path == "/tmp/cpp-agent-llm.json");
-  assert(cfg_r.value().llm.model == "test-model");
+  assert(cfg_r);
+  assert(cfg_r->llm.providers_json_path == "/tmp/cpp-agent-llm.json");
+  assert(cfg_r->llm.model == "test-model");
 
   // Verify "~" expansion for config path.
   const char* home = std::getenv("HOME");
@@ -54,10 +54,10 @@ int main() {
                "}\n");
 
     auto cfg2_r = agent::load_config("~/cpp-agent-test-config-path/settings.json");
-    assert(cfg2_r.ok());
-    assert(cfg2_r.value().llm.providers_json_path == fs::path(home) / "llm.json");
-    assert(cfg2_r.value().project_root == fs::path(home) / "proj");
-    assert(cfg2_r.value().storage_dir == fs::path(home) / "store");
+    assert(cfg2_r);
+    assert(cfg2_r->llm.providers_json_path == fs::path(home) / "llm.json");
+    assert(cfg2_r->project_root == fs::path(home) / "proj");
+    assert(cfg2_r->storage_dir == fs::path(home) / "store");
 
     fs::remove_all(home_tmp);
   }

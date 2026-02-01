@@ -7,10 +7,10 @@
 
 #include <nlohmann/json.hpp>
 
+#include <string.h>
 #include <cstdlib>
 #include <iostream>
 #include <sstream>
-#include <string.h>
 #include <utility>
 
 namespace agent {
@@ -21,10 +21,10 @@ bool DebugLlm() {
   return v && *v && strcmp(v, "0") != 0;
 }
 
-
 bool contains_model(const std::vector<std::string>& models, const std::string& model_name) {
   for (const auto& m : models) {
-    if (m == model_name) return true;
+    if (m == model_name)
+      return true;
   }
   return false;
 }
@@ -33,11 +33,12 @@ static std::string JsonEscapeString(const std::string& s) {
   // Convert to a properly escaped JSON string (without surrounding quotes).
   // nlohmann::json handles control chars and UTF-8 safely.
   const std::string dumped = nlohmann::json(s).dump();
-  if (dumped.size() < 2) return {};
+  if (dumped.size() < 2)
+    return {};
   return dumped.substr(1, dumped.size() - 2);
 }
 
-} // namespace
+}  // namespace
 
 OpenAIRequest::OpenAIRequest(std::string base_url,
                              std::string api_key,
@@ -56,12 +57,22 @@ OpenAIRequest::OpenAIRequest(std::string base_url,
       on_done_(std::move(on_done)) {
   acc_.Reset();
   if (DebugLlm()) {
-    std::cerr << "[cpp-agent.llm] OpenAIRequest ctor base_url=" << base_url_ << " model="
-              << model_name_ << std::endl;
+    std::cerr << "[cpp-agent.llm] OpenAIRequest ctor base_url=" << base_url_
+              << " model=" << model_name_ << std::endl;
   }
   http::Request req;
   req.method = "POST";
-  req.url = base_url_ + "/v1/chat/completions";
+
+  // base_url may be configured as "https://api.openai.com" or "https://api.openai.com/v1".
+  // Normalize to always include "/v1" exactly once.
+  std::string base = base_url_;
+  if (!base.empty() && base.back() == '/')
+    base.pop_back();
+  if (base.size() >= 3 && base.substr(base.size() - 3) == "/v1") {
+    req.url = base + "/chat/completions";
+  } else {
+    req.url = base + "/v1/chat/completions";
+  }
   req.headers.push_back({"Content-Type", "application/json"});
   req.headers.push_back({"Accept", "text/event-stream"});
   req.headers.push_back({"Authorization", "Bearer " + api_key_});
@@ -75,13 +86,15 @@ OpenAIRequest::OpenAIRequest(std::string base_url,
     bool first = true;
     for (const auto& tool : tools) {
       for (const auto& fn : tool.functions) {
-        if (!fn) continue;
+        if (!fn)
+          continue;
         const auto& spec = fn->spec();
-        if (!first) oss << ',';
+        if (!first)
+          oss << ',';
         first = false;
         oss << "{\"type\":\"function\",\"function\":{\"name\":\"" << JsonEscapeString(spec.name)
-            << "\",\"description\":\"" << JsonEscapeString(spec.description) << "\",\"parameters\":"
-            << spec.parameters_json << "}}";
+            << "\",\"description\":\"" << JsonEscapeString(spec.description)
+            << "\",\"parameters\":" << spec.parameters_json << "}}";
       }
     }
     oss << ']';
@@ -93,17 +106,22 @@ OpenAIRequest::OpenAIRequest(std::string base_url,
 
   auto role_to_string = [](LlmRole r) -> const char* {
     switch (r) {
-    case LlmRole::kSystem: return "system";
-    case LlmRole::kUser: return "user";
-    case LlmRole::kAssistant: return "assistant";
-    case LlmRole::kTool: return "tool";
+      case LlmRole::kSystem:
+        return "system";
+      case LlmRole::kUser:
+        return "user";
+      case LlmRole::kAssistant:
+        return "assistant";
+      case LlmRole::kTool:
+        return "tool";
     }
     return "user";
   };
 
   bool first_msg = true;
   for (const auto& m : messages) {
-    if (!first_msg) msg_oss << ',';
+    if (!first_msg)
+      msg_oss << ',';
     first_msg = false;
 
     msg_oss << "{\"role\":\"" << role_to_string(m.role) << "\"";
@@ -120,11 +138,12 @@ OpenAIRequest::OpenAIRequest(std::string base_url,
       msg_oss << ",\"tool_calls\":[";
       bool first_tc = true;
       for (const auto& tc : m.tool_calls) {
-        if (!first_tc) msg_oss << ',';
+        if (!first_tc)
+          msg_oss << ',';
         first_tc = false;
         msg_oss << "{\"id\":\"" << JsonEscapeString(tc.id)
-                << "\",\"type\":\"function\",\"function\":{\"name\":\""
-                << JsonEscapeString(tc.name) << "\",\"arguments\":";
+                << "\",\"type\":\"function\",\"function\":{\"name\":\"" << JsonEscapeString(tc.name)
+                << "\",\"arguments\":";
 
         // Arguments must be a JSON string value in OpenAI schema.
         msg_oss << "\"" << JsonEscapeString(tc.arguments_json) << "\"";
@@ -137,14 +156,14 @@ OpenAIRequest::OpenAIRequest(std::string base_url,
   }
   msg_oss << ']';
 
-  req.body = std::string("{\"model\":\"") + model_name_ +
-             std::string("\",\"stream\":true,") + msg_oss.str() + tools_json +
-             std::string("}");
+  req.body = std::string("{\"model\":\"") + model_name_ + std::string("\",\"stream\":true,") +
+             msg_oss.str() + tools_json + std::string("}");
 
   req.on_body_chunk = [this](const char* data, size_t n) {
     sse_.Feed(data, n);
     for (auto& ev : sse_.PopEvents()) {
-      if (!HandleSseDataLine(ev)) return false;
+      if (!HandleSseDataLine(ev))
+        return false;
     }
     return true;
   };
@@ -155,7 +174,29 @@ OpenAIRequest::OpenAIRequest(std::string base_url,
                 << " error_code=" << static_cast<int>(r.error.code) << " curl=" << r.error.curl_code
                 << " msg='" << r.error.message << "'" << std::endl;
     }
-    if (on_done_) std::move(on_done_)();
+
+    // For non-2xx responses, surface an error via the streaming channel so the agent can abort.
+    if (r.response.status < 200 || r.response.status >= 300) {
+      std::string detail = r.response.body;
+      if (detail.size() > 2048)
+        detail = detail.substr(0, 2048) + "...(truncated)";
+
+      std::string msg = "http_status=" + std::to_string(r.response.status);
+      if (!detail.empty())
+        msg += " body=" + detail;
+      if (r.error.code != http::ErrorCode::kOk || r.error.curl_code != 0) {
+        msg += " curl_code=" + std::to_string(r.error.curl_code);
+        if (!r.error.message.empty())
+          msg += " curl_msg=" + r.error.message;
+      }
+
+      if (on_token_)
+        on_token_("[cpp-agent.error] " + msg);
+    }
+
+    if (on_done_) {
+      std::move(on_done_)();
+    }
   });
 
   if (DebugLlm()) {
@@ -175,7 +216,8 @@ bool OpenAIRequest::HandleSseDataLine(const std::string& data_line) {
   if (DebugLlm() && std::getenv("CPP_AGENT_DEBUG_LLM_VERBOSE")) {
     const bool maybe_has_tool_calls = data_line.find("\"tool_calls\"") != std::string::npos;
     const bool maybe_has_finish_reason = data_line.find("\"finish_reason\"") != std::string::npos;
-    if (!d.content_delta.empty() || maybe_has_tool_calls || maybe_has_finish_reason || data_line == "[DONE]") {
+    if (!d.content_delta.empty() || maybe_has_tool_calls || maybe_has_finish_reason ||
+        data_line == "[DONE]") {
       std::cerr << "[cpp-agent.llm] sse delta content.len=" << d.content_delta.size()
                 << " finish=" << (d.has_finish_reason ? 1 : 0)
                 << " saw.tool_calls=" << (maybe_has_tool_calls ? 1 : 0) << "\n";
@@ -196,11 +238,15 @@ bool OpenAIRequest::HandleSseDataLine(const std::string& data_line) {
         const bool maybe_has_tool_calls = data_line.find("\"tool_calls\"") != std::string::npos;
         if (maybe_has_tool_calls) {
           std::string s = data_line;
-          if (s.size() > 2048) s = s.substr(0, 2048) + "...(truncated)";
+          if (s.size() > 2048)
+            s = s.substr(0, 2048) + "...(truncated)";
           std::cerr << "[cpp-agent.llm] raw(tool_calls) " << s << "\n";
         }
       }
     }
+
+    // IMPORTANT: do not complete the request here. The underlying HTTP stream may still
+    // deliver bytes. Completing here can destroy this object while callbacks still run.
     if (has_tools && on_tool_calls_) {
       auto msg = acc_.BuildAssistantMessage();
       if (DebugLlm()) {
@@ -213,6 +259,7 @@ bool OpenAIRequest::HandleSseDataLine(const std::string& data_line) {
       }
       std::move(on_tool_calls_)(std::move(msg.tool_calls));
     }
+
     return true;
   }
 
@@ -233,19 +280,14 @@ bool OpenAIProvider::SupportsModel(const std::string& model_name) const {
 }
 
 std::unique_ptr<LlmRequest> OpenAIProvider::Create(std::string model_name,
-                                                 std::vector<LlmMessage> messages,
-                                                 std::vector<agent::Tool> tools,
-                                                 LlmRequest::OnToken on_token,
-                                                 LlmRequest::OnToolCalls on_tool_calls,
-                                                 LlmRequest::OnDone on_done) {
-  return std::make_unique<OpenAIRequest>(base_url_,
-                                        api_key_,
-                                        std::move(model_name),
-                                        std::move(messages),
-                                        std::move(tools),
-                                        std::move(on_token),
-                                        std::move(on_tool_calls),
-                                        std::move(on_done));
+                                                   std::vector<LlmMessage> messages,
+                                                   std::vector<agent::Tool> tools,
+                                                   LlmRequest::OnToken on_token,
+                                                   LlmRequest::OnToolCalls on_tool_calls,
+                                                   LlmRequest::OnDone on_done) {
+  return std::make_unique<OpenAIRequest>(base_url_, api_key_, std::move(model_name),
+                                         std::move(messages), std::move(tools), std::move(on_token),
+                                         std::move(on_tool_calls), std::move(on_done));
 }
 
-} // namespace agent
+}  // namespace agent

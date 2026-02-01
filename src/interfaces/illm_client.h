@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/tool_protocol.h"
+#include "infra/llm/llm_message.h"
 
 #include <string>
 #include <vector>
@@ -13,13 +13,13 @@ struct LlmOptions {
 };
 
 struct LlmResponse {
-  agent::Message assistant_message;
+  agent::LlmMessage assistant_message;
 };
 
 class ILlmClient {
 public:
   virtual ~ILlmClient() = default;
-  virtual LlmResponse Complete(const std::vector<agent::Message>& messages,
+  virtual LlmResponse Complete(const std::vector<agent::LlmMessage>& messages,
                                const LlmOptions& options) = 0;
 };
 

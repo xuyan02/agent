@@ -1,0 +1,9 @@
+BasedOnStyle: Chromium
+
+# Keep in sync with Chromium-ish preferences.
+ColumnLimit: 100
+DerivePointerAlignment: false
+PointerAlignment: Left
+
+# Allow compact braces for simple initializers.
+Cpp11BracedListStyle: true

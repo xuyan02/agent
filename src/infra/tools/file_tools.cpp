@@ -1,7 +1,5 @@
 #include "infra/tools/file_tools.h"
 
-#include "core/errors.h"
-
 #include <fstream>
 #include <sstream>
 
@@ -44,7 +42,13 @@ agent::ToolResult ReadFileTool::Invoke(const std::string& tool_call_id,
     return tr;
   }
 
-  auto resolved = ctx.policy.resolve_under_root(path_str);
+  if (!ctx.resolve_under_root) {
+    tr.ok = false;
+    tr.content = "No policy: resolve_under_root";
+    return tr;
+  }
+
+  auto resolved = ctx.resolve_under_root(path_str);
   if (!resolved) {
     tr.ok = false;
     tr.content = "Path denied by policy";
@@ -78,7 +82,13 @@ agent::ToolResult WriteFileTool::Invoke(const std::string& tool_call_id,
     return tr;
   }
 
-  auto resolved = ctx.policy.resolve_under_root(path_str);
+  if (!ctx.resolve_under_root) {
+    tr.ok = false;
+    tr.content = "No policy: resolve_under_root";
+    return tr;
+  }
+
+  auto resolved = ctx.resolve_under_root(path_str);
   if (!resolved) {
     tr.ok = false;
     tr.content = "Path denied by policy";

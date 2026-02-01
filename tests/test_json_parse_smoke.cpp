@@ -19,10 +19,9 @@ static void test_parse_and_get_string() {
 
   auto arr = agent::json::GetStringArrayAllowMissing(*j, "arr");
   assert(arr.has_value());
-  assert(arr->has_value());
-  assert(arr->value().size() == 2u);
-  assert(arr->value()[0] == "x");
-  assert(arr->value()[1] == "y");
+  assert(arr->size() == 2u);
+  assert((*arr)[0] == "x");
+  assert((*arr)[1] == "y");
 }
 
 int main() {

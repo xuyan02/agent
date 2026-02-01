@@ -2,6 +2,7 @@
 
 #include "runtime/function.h"
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -13,7 +14,9 @@ struct Tool {
   std::string description;
   std::vector<FunctionPtr> functions;
 
-  FunctionPtr FindFunctionByName(const std::string& name) const;
+  Function* FindFunctionByName(const std::string& name) const;
 };
 
-} // namespace agent
+using ToolPtr = std::unique_ptr<Tool>;
+
+}  // namespace agent
