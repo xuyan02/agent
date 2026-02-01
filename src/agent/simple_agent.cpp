@@ -69,6 +69,11 @@ void SimpleAgent::StartRequest() {
   };
 
   auto on_done_req = [this]() mutable {
+    if (tool_call_executor_) {
+      tool_call_executor_->Finish();
+      tool_call_executor_.reset();
+    }
+
     req_.reset();
     busy_ = false;
 
@@ -128,11 +133,7 @@ void SimpleAgent::OnToolCalls(std::vector<agent::ToolCall> tool_calls) {
             agent::LlmToolResult{.tool_call_id = std::move(call_id), .content = agent::json::Dump(err)};
         self->history_.push_back(std::move(tool_msg));
       },
-      [self]() mutable {
-        self->tool_call_executor_->Finish();
-        self->tool_call_executor_.reset();
-        self->StartRequest();
-      });
+      [self]() mutable { self->StartRequest(); });
 
   tool_call_executor_->AddToolCalls(std::move(calls));
 }
