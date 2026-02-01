@@ -14,9 +14,9 @@ class ShallowThinkTool final : public agent::Tool {
   void Init() override;
 
  private:
-  void ShallowThink(nlohmann::json arguments,
-                    agent::Function::OnDone on_done,
-                    agent::Function::OnError on_error);
+  void Think(nlohmann::json arguments,
+             agent::Function::OnDone on_done,
+             agent::Function::OnError on_error);
 
   agent::SmartAgent* smart_{nullptr};
 };

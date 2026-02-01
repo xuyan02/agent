@@ -30,13 +30,13 @@ void ShallowThinkTool::Init() {
       "Do a shallow thinking pass and return the result.",
       kParametersJson,
       [this](nlohmann::json arguments, agent::Function::OnDone on_done, agent::Function::OnError on_error) {
-        ShallowThink(std::move(arguments), std::move(on_done), std::move(on_error));
+        Think(std::move(arguments), std::move(on_done), std::move(on_error));
       });
 }
 
-void ShallowThinkTool::ShallowThink(nlohmann::json arguments,
-                                    agent::Function::OnDone on_done,
-                                    agent::Function::OnError on_error) {
+void ShallowThinkTool::Think(nlohmann::json arguments,
+                             agent::Function::OnDone on_done,
+                             agent::Function::OnError on_error) {
   if (!smart_) {
     if (on_error)
       std::move(on_error)("null_smart_agent");
