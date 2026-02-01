@@ -10,6 +10,21 @@ namespace agent {
 SimpleAgent::SimpleAgent(agent::Runtime* runtime, const agent::AgentContext* ctx)
     : Agent(runtime, ctx) {}
 
+std::vector<std::string> SimpleAgent::GetActiveToolNames() const {
+  return {};
+}
+
+std::vector<agent::Tool*> SimpleAgent::GetActiveTools() {
+  std::vector<agent::Tool*> out;
+  for (const auto& name : GetActiveToolNames()) {
+    if (name.empty())
+      continue;
+    if (auto* t = FindTool(name))
+      out.push_back(t);
+  }
+  return out;
+}
+
 void SimpleAgent::Run(std::string input,
                      dust::OnceFunction<void(std::string answer)> on_done,
                      dust::OnceFunction<void(std::string error)> on_error) {
@@ -44,17 +59,7 @@ void SimpleAgent::StartRequest() {
   for (const auto& m : history_)
     messages.push_back(m);
 
-  auto tool_owners = ctx()->GetTools();
-  std::vector<agent::Tool*> tools;
-  tools.reserve(tool_owners.size());
-  for (auto& t : tool_owners) {
-    if (!t)
-      continue;
-
-    const std::string id = t->id;
-    RegisterTool(std::move(t));
-    tools.push_back(FindTool(id));
-  }
+  std::vector<agent::Tool*> tools = GetActiveTools();
 
   auto on_token = [this](std::string delta) { assistant_msg_.content += delta; };
 
@@ -69,9 +74,11 @@ void SimpleAgent::StartRequest() {
   };
 
   auto on_done_req = [this]() mutable {
+    // If this round requested tool calls, we'll start a follow-up request once
+    // they complete. Do not finish the run yet.
     if (tool_call_executor_) {
-      tool_call_executor_->Finish();
-      tool_call_executor_.reset();
+      req_.reset();
+      return;
     }
 
     req_.reset();
@@ -109,9 +116,13 @@ void SimpleAgent::StartRequest() {
 }
 
 void SimpleAgent::OnToolCalls(std::vector<agent::ToolCall> tool_calls) {
-  req_.reset();
+  // Do not destroy req_ here. The underlying streaming transport may still be
+  // in-flight; tear it down in on_done_req to avoid UAF.
 
   std::vector<agent::ToolCall> calls = std::move(tool_calls);
+
+  // Keep fully-qualified function name (e.g. "shallow_think.think").
+  // ToolCallExecutor routes by tool_id before the dot.
 
   auto* self = this;
 
@@ -133,9 +144,14 @@ void SimpleAgent::OnToolCalls(std::vector<agent::ToolCall> tool_calls) {
             agent::LlmToolResult{.tool_call_id = std::move(call_id), .content = agent::json::Dump(err)};
         self->history_.push_back(std::move(tool_msg));
       },
-      [self]() mutable { self->StartRequest(); });
+      [self]() mutable {
+        // Start the follow-up request after all tool calls are resolved.
+        self->tool_call_executor_.reset();
+        self->StartRequest();
+      });
 
   tool_call_executor_->AddToolCalls(std::move(calls));
+  tool_call_executor_->Finish();
 }
 
 }  // namespace agent

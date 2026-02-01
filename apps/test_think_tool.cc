@@ -17,10 +17,6 @@ class ThinkToolAgentContext final : public agent::AgentContext {
     return "You are a test harness.";
   }
 
-  std::vector<agent::ToolPtr> GetTools() const override {
-    // IntuitiveAgent injects ThinkTool itself.
-    return {};
-  }
 };
 
 }  // namespace
@@ -36,7 +32,7 @@ int main() {
   agent::IntuitiveAgent intuitive(&runtime, &ctx);
 
   intuitive.Run(
-      "Please briefly explain what a mutex is in C++. If you cannot, call shallow_think_tool.think.",
+      "Please briefly explain what a mutex is in C++. If you cannot, call shallow_think.think.",
       [](std::string out) {
         std::fprintf(stderr, "IntuitiveAgent output:\n%s\n", out.c_str());
         dust::MessageLoop::Current()->Quit();

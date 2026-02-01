@@ -12,9 +12,15 @@
 
 namespace agent {
 
-class SimpleAgent final : public Agent {
+class SimpleAgent : public Agent {
  public:
   SimpleAgent(agent::Runtime* runtime, const agent::AgentContext* ctx);
+
+  virtual std::vector<std::string> GetActiveToolNames() const;
+
+  // Tools that are active for the current run/request.
+  // Computed from GetActiveToolNames() + FindTool().
+  std::vector<agent::Tool*> GetActiveTools();
 
   void Run(std::string input,
            dust::OnceFunction<void(std::string answer)> on_done,

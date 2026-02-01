@@ -15,12 +15,5 @@ std::string PromptOverrideAgentContext::GetSystemPrompt() const {
   return system_prompt_;
 }
 
-std::vector<agent::ToolPtr> PromptOverrideAgentContext::GetTools() const {
-  if (!base_)
-    return {};
-  if (!tools_enabled_)
-    return {};
-  return base_->GetTools();
-}
 
 }  // namespace agent

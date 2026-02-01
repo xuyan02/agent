@@ -15,7 +15,6 @@ class PromptOverrideAgentContext final : public agent::AgentContext {
 
   std::string GetModelName() const override;
   std::string GetSystemPrompt() const override;
-  std::vector<agent::ToolPtr> GetTools() const override;
 
  private:
   const agent::AgentContext* base_{nullptr};

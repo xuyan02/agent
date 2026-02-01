@@ -22,7 +22,6 @@ class SimpleAgentContext final : public agent::AgentContext {
 
   std::string GetModelName() const override { return model_name_; }
   std::string GetSystemPrompt() const override { return system_prompt_; }
-  std::vector<agent::ToolPtr> GetTools() const override { return {}; }
 
  private:
   std::string model_name_;

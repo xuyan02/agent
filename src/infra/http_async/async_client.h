@@ -69,41 +69,17 @@ struct Result {
   Error error;
 };
 
-class Call {
- public:
-  Call() = default;
-  Call(Call&&) noexcept;
-  Call& operator=(Call&&) noexcept;
-  ~Call();
-
-  Call(const Call&) = delete;
-  Call& operator=(const Call&) = delete;
-
-  void Cancel();
-  bool valid() const;
-
- private:
-  class Impl;
-  friend class AsyncClient;
-
-  explicit Call(std::shared_ptr<Impl> impl);
-  std::shared_ptr<Impl> impl_;
-};
+using OnceCallback = dust::OnceFunction<void(Result)>;
 
 class AsyncClient {
  public:
-  // Binds to the MessageLoop on the current thread.
-  AsyncClient();
+  // One-shot. Binds to the MessageLoop on the current thread and starts
+  // immediately.
+  AsyncClient(Request req, OnceCallback on_finish);
   ~AsyncClient();
 
   AsyncClient(const AsyncClient&) = delete;
   AsyncClient& operator=(const AsyncClient&) = delete;
-
-  using OnceCallback = dust::OnceFunction<void(Result)>;
-
-  // Starts an async HTTP request.
-  // The callback is invoked on the MessageLoop thread.
-  Call Start(Request req, OnceCallback callback);
 
  private:
   class Impl;

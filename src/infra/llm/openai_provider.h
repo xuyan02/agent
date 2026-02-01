@@ -33,9 +33,7 @@ public:
 private:
   bool HandleSseDataLine(const std::string& data_line);
 
-  http::AsyncClient http_;
-
-  http::Call call_;
+  std::unique_ptr<http::AsyncClient> http_;
   SseParser sse_;
 
   std::string base_url_;

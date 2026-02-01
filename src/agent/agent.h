@@ -44,10 +44,12 @@ class Agent : public agent::ToolProvider {
 
  protected:
 
- private:
+ protected:
   agent::Runtime* runtime_;
   const agent::AgentContext* ctx_{nullptr};
   std::vector<agent::ToolPtr> tools_;
+
+ private:
 };
 
 }  // namespace agent

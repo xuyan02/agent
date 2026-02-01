@@ -170,7 +170,7 @@ OpenAIRequest::OpenAIRequest(std::string base_url,
     return true;
   };
 
-  call_ = http_.Start(std::move(req), [this](http::Result r) {
+  auto on_finish = [this](http::Result r) {
     if (DebugLlm()) {
       std::cerr << "[cpp-agent.llm] OpenAIRequest done status=" << r.response.status
                 << " error_code=" << static_cast<int>(r.error.code) << " curl=" << r.error.curl_code
@@ -199,10 +199,12 @@ OpenAIRequest::OpenAIRequest(std::string base_url,
     if (on_done_) {
       std::move(on_done_)();
     }
-  });
+  };
+
+  http_ = std::make_unique<http::AsyncClient>(std::move(req), std::move(on_finish));
 
   if (DebugLlm()) {
-    std::cerr << "[cpp-agent.llm] AsyncClient::Start issued" << std::endl;
+    std::cerr << "[cpp-agent.llm] AsyncClient started" << std::endl;
   }
 }
 

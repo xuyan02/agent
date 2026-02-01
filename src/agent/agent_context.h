@@ -13,7 +13,6 @@ class AgentContext {
 
   virtual std::string GetModelName() const = 0;
   virtual std::string GetSystemPrompt() const = 0;
-  virtual std::vector<ToolPtr> GetTools() const = 0;
 };
 
 }  // namespace agent
