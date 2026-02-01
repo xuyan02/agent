@@ -1,0 +1,15 @@
+{
+  "providers": [
+    {
+      "type": "openai",
+      "name": "openai",
+      "models": [
+        "gpt-4o-mini"
+      ],
+      "params": {
+        "api_key": "sk-qyvC8Nqzl3i8md4xyXoQlA6AMBSLS9RD68ILlqtf1qsUofXA",
+        "base_url": "https://api.allall.ai"
+      }
+    }
+  ]
+}

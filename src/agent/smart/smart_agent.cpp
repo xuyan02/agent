@@ -3,6 +3,7 @@
 #include "agent/smart/intuitive_agent.h"
 #include "agent/smart/routing_result_parse.h"
 #include "agent/smart/shallow_think_agent.h"
+#include "agent/smart/tools/think_tool.h"
 
 #include <cstdio>
 #include <utility>
@@ -10,7 +11,13 @@
 namespace agent {
 
 SmartAgent::SmartAgent(agent::Runtime* runtime, const agent::AgentContext* ctx)
-    : Agent(runtime, ctx) {}
+    : Agent(runtime, ctx),
+      intuitive_(std::make_unique<agent::IntuitiveAgent>(runtime, ctx)),
+      shallow_(std::make_unique<agent::ShallowThinkAgent>(runtime, ctx)) {
+  intuitive_->RegisterTool(std::make_unique<agent::ThinkTool>(this));
+}
+
+SmartAgent::~SmartAgent() = default;
 
 void SmartAgent::RunShallowThink(std::string thought,
                                 std::string content,
@@ -26,8 +33,13 @@ void SmartAgent::RunShallowThink(std::string thought,
   // to adjust prompting or logging.
   (void)thought;
 
-  ShallowThinkAgent shallow(runtime(), ctx());
-  shallow.Run(std::move(content), std::move(on_done), std::move(on_error));
+  if (!shallow_) {
+    if (on_error)
+      std::move(on_error)("null_shallow_agent");
+    return;
+  }
+
+  shallow_->Run(std::move(content), std::move(on_done), std::move(on_error));
 }
 
 void SmartAgent::Run(std::string input,
@@ -48,11 +60,17 @@ void SmartAgent::Run(std::string input,
   pending_on_done_ = std::move(on_done);
   pending_on_error_ = std::move(on_error);
 
+  if (!intuitive_) {
+    busy_ = false;
+    if (pending_on_error_)
+      std::move(pending_on_error_)("null_intuitive_agent");
+    return;
+  }
+
   std::fprintf(stderr, "[cpp-agent.smart] route: intuitive\n");
-  IntuitiveAgent intuitive(runtime(), ctx());
   auto* self = this;
   auto input_shared = std::make_shared<std::string>(std::move(input));
-  intuitive.Run(
+  intuitive_->Run(
       *input_shared,
       [self, input_shared](std::string answer_json) mutable {
         auto rr = agent::ParseRoutingResultFromJson(answer_json);
@@ -92,8 +110,14 @@ void SmartAgent::Run(std::string input,
           std::fprintf(stderr, " reason=%s", rr->reason.c_str());
         std::fprintf(stderr, "\n");
         std::fprintf(stderr, "[cpp-agent.smart] route: shallow\n");
-        ShallowThinkAgent shallow(self->runtime(), self->ctx());
-        shallow.Run(
+        if (!self->shallow_) {
+          self->busy_ = false;
+          if (self->pending_on_error_)
+            std::move(self->pending_on_error_)("null_shallow_agent");
+          return;
+        }
+
+        self->shallow_->Run(
             std::move(*input_shared),
             [self](std::string shallow_json) mutable {
               auto rr2 = agent::ParseRoutingResultFromJson(shallow_json);

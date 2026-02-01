@@ -1,8 +1,6 @@
 #include "agent/smart/intuitive_agent.h"
 
 #include "agent/smart/prompt_overrides.h"
-#include "agent/smart/tools/think_tool.h"
-#include "agent/smart/tools/think_tool_forward_context.h"
 #include "agent/simple_agent.h"
 
 #include <memory>
@@ -42,21 +40,15 @@ IntuitiveAgent::IntuitiveAgent(agent::Runtime* runtime, const agent::AgentContex
 void IntuitiveAgent::Run(std::string input,
                          dust::OnceFunction<void(std::string answer)> on_done,
                          dust::OnceFunction<void(std::string error)> on_error) {
-  auto smart = std::make_shared<agent::SmartAgent>(runtime(), this->ctx());
-
-  std::vector<agent::ToolPtr> extra;
-  extra.push_back(std::make_unique<agent::ThinkTool>(smart.get()));
-
-  agent::ToolAppendAgentContext tool_ctx(this->ctx(), std::move(extra));
-  PromptOverrideAgentContext ctx(&tool_ctx, BuildIntuitiveSystemPrompt(), /*tools_enabled=*/true);
+  PromptOverrideAgentContext ctx(this->ctx(), BuildIntuitiveSystemPrompt(), /*tools_enabled=*/true);
   auto impl = std::make_shared<agent::SimpleAgent>(runtime(), &ctx);
   impl->Run(
       std::move(input),
-      [impl, smart, on_done = std::move(on_done)](std::string answer) mutable {
+      [impl, on_done = std::move(on_done)](std::string answer) mutable {
         if (on_done)
           std::move(on_done)(std::move(answer));
       },
-      [impl, smart, on_error = std::move(on_error)](std::string error) mutable {
+      [impl, on_error = std::move(on_error)](std::string error) mutable {
         if (on_error)
           std::move(on_error)(std::move(error));
       });
