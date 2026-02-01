@@ -44,7 +44,7 @@ ShallowThinkAgent::ShallowThinkAgent(agent::Runtime* runtime, const agent::Agent
 void ShallowThinkAgent::Run(std::string input,
                             dust::OnceFunction<void(std::string answer)> on_done,
                             dust::OnceFunction<void(std::string error)> on_error) {
-  PromptOverrideAgentContext ctx(this->ctx(), BuildShallowSystemPrompt(), /*tools_enabled=*/true);
+  PromptOverrideAgentContext ctx(this->ctx(), BuildShallowSystemPrompt(), /*tools_enabled=*/false);
   auto impl = std::make_shared<agent::SimpleAgent>(runtime(), &ctx);
   impl->Run(std::move(input),
             [impl, on_done = std::move(on_done)](std::string answer) mutable {

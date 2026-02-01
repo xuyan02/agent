@@ -12,6 +12,24 @@ namespace agent {
 SmartAgent::SmartAgent(agent::Runtime* runtime, const agent::AgentContext* ctx)
     : Agent(runtime, ctx) {}
 
+void SmartAgent::RunShallowThink(std::string thought,
+                                std::string content,
+                                dust::OnceFunction<void(std::string answer)> on_done,
+                                dust::OnceFunction<void(std::string error)> on_error) {
+  if (!runtime() || !ctx()) {
+    if (on_error)
+      std::move(on_error)("null_dependency");
+    return;
+  }
+
+  // For now, ShallowThinkAgent only needs the user content; thought can be used later
+  // to adjust prompting or logging.
+  (void)thought;
+
+  ShallowThinkAgent shallow(runtime(), ctx());
+  shallow.Run(std::move(content), std::move(on_done), std::move(on_error));
+}
+
 void SmartAgent::Run(std::string input,
                      dust::OnceFunction<void(std::string answer)> on_done,
                      dust::OnceFunction<void(std::string error)> on_error) {

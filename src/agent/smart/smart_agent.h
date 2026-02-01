@@ -15,6 +15,11 @@ class SmartAgent final : public Agent {
            dust::OnceFunction<void(std::string answer)> on_done,
            dust::OnceFunction<void(std::string error)> on_error) override;
 
+  void RunShallowThink(std::string thought,
+                      std::string content,
+                      dust::OnceFunction<void(std::string answer)> on_done,
+                      dust::OnceFunction<void(std::string error)> on_error);
+
  private:
   bool busy_{false};
 

@@ -16,6 +16,7 @@ add_library(cpp_agent_lib
   src/agent/smart/routing_result.cpp
   src/agent/smart/shallow_think_agent.cpp
   src/agent/smart/smart_agent.cpp
+  src/agent/smart/tools/think_tool.cpp
   src/runtime/runtime.cpp
   src/tool/tool.cpp
   src/tool/tool_call_executor.cpp
@@ -107,7 +108,9 @@ target_include_directories(cpp_agent_lib PUBLIC
 # (Sources are kept in-tree but are not part of the build.)
 
 add_executable(test_one_step_agent apps/test_one_step_agent.cc)
+add_executable(test_think_tool apps/test_think_tool.cc)
 target_link_libraries(test_one_step_agent PRIVATE cpp_agent_lib)
+target_link_libraries(test_think_tool PRIVATE cpp_agent_lib)
 
 if(CPP_AGENT_BUILD_TESTS)
   enable_testing()
