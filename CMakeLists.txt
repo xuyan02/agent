@@ -16,7 +16,7 @@ add_library(cpp_agent_lib
   src/agent/smart/routing_result.cpp
   src/agent/smart/shallow_think_agent.cpp
   src/agent/smart/smart_agent.cpp
-  src/agent/smart/tools/think_tool.cpp
+  src/agent/smart/tools/shallow_think_tool.cpp
   src/runtime/runtime.cpp
   src/tool/tool.cpp
   src/tool/tool_call_executor.cpp

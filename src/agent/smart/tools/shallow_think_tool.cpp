@@ -1,4 +1,5 @@
-#include "agent/smart/tools/think_tool.h"
+
+#include "agent/smart/tools/shallow_think_tool.h"
 
 #include <utility>
 
@@ -18,14 +19,14 @@ constexpr const char* kParametersJson = R"JSON({
 
 }  // namespace
 
-ThinkTool::ThinkTool(agent::SmartAgent* smart) : smart_(smart) {
-  id = "think";
-  description = "Thinking toolset";
+ShallowThinkTool::ShallowThinkTool(agent::SmartAgent* smart) : smart_(smart) {
+  id = "shallow_think_tool";
+  description = "Shallow thinking toolset";
 }
 
-void ThinkTool::Init() {
+void ShallowThinkTool::Init() {
   RegisterFunction(
-      "think.shallow_think",
+      "shallow_think_tool.think",
       "Do a shallow thinking pass and return the result.",
       kParametersJson,
       [this](nlohmann::json arguments, agent::Function::OnDone on_done, agent::Function::OnError on_error) {
@@ -33,9 +34,9 @@ void ThinkTool::Init() {
       });
 }
 
-void ThinkTool::ShallowThink(nlohmann::json arguments,
-                            agent::Function::OnDone on_done,
-                            agent::Function::OnError on_error) {
+void ShallowThinkTool::ShallowThink(nlohmann::json arguments,
+                                    agent::Function::OnDone on_done,
+                                    agent::Function::OnError on_error) {
   if (!smart_) {
     if (on_error)
       std::move(on_error)("null_smart_agent");

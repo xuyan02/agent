@@ -3,7 +3,7 @@
 #include "agent/smart/intuitive_agent.h"
 #include "agent/smart/routing_result_parse.h"
 #include "agent/smart/shallow_think_agent.h"
-#include "agent/smart/tools/think_tool.h"
+#include "agent/smart/tools/shallow_think_tool.h"
 
 #include <cstdio>
 #include <utility>
@@ -14,7 +14,7 @@ SmartAgent::SmartAgent(agent::Runtime* runtime, const agent::AgentContext* ctx)
     : Agent(runtime, ctx),
       intuitive_(std::make_unique<agent::IntuitiveAgent>(runtime, ctx)),
       shallow_(std::make_unique<agent::ShallowThinkAgent>(runtime, ctx)) {
-  intuitive_->RegisterTool(std::make_unique<agent::ThinkTool>(this));
+  intuitive_->RegisterTool(std::make_unique<agent::ShallowThinkTool>(this));
 }
 
 SmartAgent::~SmartAgent() = default;

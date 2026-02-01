@@ -20,9 +20,9 @@ Instructions:
 
 Tool usage rule:
 - If you can answer immediately with high confidence, answer directly.
-- Otherwise, call tool function think.shallow_think to think further.
+- Otherwise, call tool function shallow_think_tool.think to think further.
 
-When calling think.shallow_think:
+When calling shallow_think_tool.think:
 - Provide arguments:
   - thought: a short natural-language summary of what you think is needed (no chain-of-thought)
   - content: the user's request verbatim (or a faithful restatement)

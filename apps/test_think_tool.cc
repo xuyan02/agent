@@ -36,7 +36,7 @@ int main() {
   agent::IntuitiveAgent intuitive(&runtime, &ctx);
 
   intuitive.Run(
-      "Please briefly explain what a mutex is in C++. If you cannot, call think.shallow_think.",
+      "Please briefly explain what a mutex is in C++. If you cannot, call shallow_think_tool.think.",
       [](std::string out) {
         std::fprintf(stderr, "IntuitiveAgent output:\n%s\n", out.c_str());
         dust::MessageLoop::Current()->Quit();

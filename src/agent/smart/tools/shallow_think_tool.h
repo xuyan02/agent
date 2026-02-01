@@ -7,9 +7,9 @@
 
 namespace agent {
 
-class ThinkTool final : public agent::Tool {
+class ShallowThinkTool final : public agent::Tool {
  public:
-  explicit ThinkTool(agent::SmartAgent* smart);
+  explicit ShallowThinkTool(agent::SmartAgent* smart);
 
   void Init() override;
 
