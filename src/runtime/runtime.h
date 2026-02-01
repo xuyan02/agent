@@ -1,6 +1,7 @@
 #pragma once
 
 #include "agent/agent_factory.h"
+#include "interfaces/iconsole.h"
 
 #include "llm/llm_context.h"
 #include "llm/llm_request.h"
@@ -18,13 +19,17 @@ class Agent;
 
 class Runtime {
  public:
+  // Console must outlive Runtime.
   // If root_path is empty, the default path is computed from the current user's
   // home directory (pw_dir) + ".agent".
-  explicit Runtime(std::string root_path);
+  Runtime(agent::IConsole& console, std::string root_path);
 
   const std::filesystem::path& GetRootPath() const { return root_path_; }
 
   std::string GetPrompt(const std::string& name) const;
+
+  agent::IConsole& console() { return console_; }
+  const agent::IConsole& console() const { return console_; }
 
   agent::LlmContext* llm() { return llm_.get(); }
   const agent::LlmContext* llm() const { return llm_.get(); }
@@ -55,6 +60,8 @@ class Runtime {
 
  private:
   static std::filesystem::path ComputeDefaultRootPath();
+
+  agent::IConsole& console_;
 
   const agent::AgentFactory* FindAgentFactory(const std::string& type) const;
 

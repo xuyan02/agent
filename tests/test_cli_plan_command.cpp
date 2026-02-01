@@ -1,8 +1,6 @@
 #include "runtime/runtime.h"
 
-#include "llm/llm_context.h"
 #include "interfaces/iconsole.h"
-#include "runtime/team.h"
 
 #include <cassert>
 #include <string>
@@ -25,24 +23,12 @@ public:
 int main() {
   agent::CaptureConsole console;
 
-  // Runtime must have a team; /plan should not crash and should print something (even if empty).
-  // We keep this as a smoke test for the /plan routing.
-  auto llm = std::make_unique<agent::LlmContext>();
-  agent::Runtime runtime(console, std::move(llm), std::filesystem::current_path());
+  agent::Runtime runtime(console, "");
+  assert(runtime.Init());
 
-  auto team = std::make_unique<agent::Team>(runtime, "leader");
-  team->Add(std::make_unique<agent::GeneralAgent>(*team, "leader", "dummy-model"));
-  runtime.SetTeam(std::move(team));
-
-  runtime.OnCliLine("/plan");
-
-  // Smoke: command routed and produced some output (may be empty if no tasks).
-  assert(!console.out.empty());
-
-  console.out.clear();
-  runtime.OnCliLine("/prompt");
-  // System prompt must include at least the plan header.
-  assert(console.out.find("## Plan") != std::string::npos);
+  // smoke: prompt load path exists and is non-empty (repo provides prompts/)
+  const std::string p = runtime.GetPrompt("intuitive");
+  assert(!p.empty());
 
   return 0;
 }

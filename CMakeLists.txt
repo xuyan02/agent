@@ -27,6 +27,7 @@ add_library(cpp_agent_lib
   src/llm/openai_stream_accumulator.cpp
   src/llm/sse_parser.cpp
   src/http_async/async_client.cc
+  src/console/cli_console.cpp
 )
 target_include_directories(cpp_agent_lib PUBLIC src)
 
@@ -103,13 +104,8 @@ target_include_directories(cpp_agent_lib PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann_json/single_include
 )
 
-# Temporarily disable app/examples/tests while redesigning the Agent API.
-# (Sources are kept in-tree but are not part of the build.)
-
-add_executable(test_one_step_agent apps/test_one_step_agent.cc)
-add_executable(test_think_tool apps/test_think_tool.cc)
-target_link_libraries(test_one_step_agent PRIVATE cpp_agent_lib)
-target_link_libraries(test_think_tool PRIVATE cpp_agent_lib)
+add_executable(agent_cli apps/agent_cli.cc)
+target_link_libraries(agent_cli PRIVATE cpp_agent_lib)
 
 if(CPP_AGENT_BUILD_TESTS)
   enable_testing()

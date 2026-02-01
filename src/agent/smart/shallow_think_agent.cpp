@@ -2,6 +2,8 @@
 
 #include "agent/smart/smart_agent.h"
 
+#include <cstdlib>
+#include <cstdio>
 #include <utility>
 
 namespace agent {
@@ -32,7 +34,25 @@ std::vector<std::string> ShallowThinkAgent::GetActiveToolNames() const {
 void ShallowThinkAgent::Run(std::string input,
                             dust::OnceFunction<void(std::string answer)> on_done,
                             dust::OnceFunction<void(std::string error)> on_error) {
-  agent::SimpleAgent::Run(std::move(input), std::move(on_done), std::move(on_error));
+  const bool dbg = std::getenv("CPP_AGENT_DEBUG_SHALLOW_THINK") != nullptr;
+  if (dbg) {
+    std::fprintf(stderr, "[cpp-agent.shallow_think] prompt\n%.*s\n",
+                 static_cast<int>(GetSystemPrompt().size()), GetSystemPrompt().c_str());
+    std::fprintf(stderr, "[cpp-agent.shallow_think] input\n%.*s\n",
+                 static_cast<int>(input.size()), input.c_str());
+  }
+
+  agent::SimpleAgent::Run(
+      std::move(input),
+      [dbg, on_done = std::move(on_done)](std::string answer) mutable {
+        if (dbg) {
+          std::fprintf(stderr, "[cpp-agent.shallow_think] output\n%.*s\n",
+                       static_cast<int>(answer.size()), answer.c_str());
+        }
+        if (on_done)
+          std::move(on_done)(std::move(answer));
+      },
+      std::move(on_error));
 }
 
 }  // namespace agent

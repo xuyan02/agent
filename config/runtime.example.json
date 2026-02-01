@@ -1,0 +1,18 @@
+{
+  "providers": [
+    {
+      "name": "openai",
+      "type": "openai",
+      "models": ["gpt-4o"],
+      "params": {
+        "base_url": "${OPENAI_BASE_URL}",
+        "api_key": "${OPENAI_API_KEY}"
+      }
+    }
+  ],
+  "agent": {
+    "type": "smart",
+    "name": "main",
+    "params": {}
+  }
+}
