@@ -1,35 +1,15 @@
 #include "infra/tools/shell_tool.h"
 
+#include "infra/json/json.h"
+
+#include <nlohmann/json.hpp>
+
 #include <chrono>
 #include <cstdio>
 #include <future>
 #include <sstream>
 
 namespace agent {
-
-static std::string extract_json_string_or_empty(const std::string& json, const std::string& key) {
-  auto pos = json.find('"' + key + '"');
-  if (pos == std::string::npos) return {};
-  pos = json.find(':', pos);
-  if (pos == std::string::npos) return {};
-  pos++;
-  while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\n' || json[pos] == '\r' || json[pos] == '\t')) pos++;
-  if (pos >= json.size() || json[pos] != '"') return {};
-  pos++;
-  std::string out;
-  for (; pos < json.size(); ++pos) {
-    char c = json[pos];
-    if (c == '\\') {
-      if (pos + 1 >= json.size()) break;
-      out.push_back(json[pos + 1]);
-      pos++;
-      continue;
-    }
-    if (c == '"') break;
-    out.push_back(c);
-  }
-  return out;
-}
 
 ShellTool::ShellTool(int timeout_ms) : timeout_ms_(timeout_ms) {}
 
@@ -58,12 +38,25 @@ static agent::ToolResult run_with_popen(const std::string& tool_call_id,
 }
 
 agent::ToolResult ShellTool::Invoke(const std::string& tool_call_id,
-                                             const std::string& arguments_json,
-                                             const agent::ToolContext& ctx) {
-  auto cmd = extract_json_string_or_empty(arguments_json, "command");
-
+                                 const std::string& arguments_json,
+                                 const agent::ToolContext& ctx) {
   agent::ToolResult tr;
   tr.tool_call_id = tool_call_id;
+
+  auto args_opt = agent::json::Parse(arguments_json);
+  if (!args_opt || !args_opt->is_object()) {
+    tr.ok = false;
+    tr.content = "Invalid JSON arguments";
+    return tr;
+  }
+
+  auto it = args_opt->find("command");
+  if (it == args_opt->end() || !it->is_string()) {
+    tr.ok = false;
+    tr.content = "Missing argument: command";
+    return tr;
+  }
+  auto cmd = it->get<std::string>();
 
   if (cmd.empty()) {
     tr.ok = false;

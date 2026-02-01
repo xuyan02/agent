@@ -1,7 +1,13 @@
 #include "app/config.h"
 
+#include "infra/json/json.h"
+
+#include <nlohmann/json.hpp>
+
 #include <cstdlib>
 #include <fstream>
+#include <limits>
+#include <optional>
 #include <sstream>
 
 namespace agent {
@@ -22,85 +28,45 @@ static std::string trim(std::string s) {
   return s;
 }
 
-// Minimal JSON extraction without adding a JSON dependency.
-// This expects the example format and is intentionally strict.
-static bool ExtractJsonString(const std::string& json, const std::string& key, std::string* out) {
-  auto pos = json.find('"' + key + '"');
-  if (pos == std::string::npos) return false;
-
-  pos = json.find(':', pos);
-  if (pos == std::string::npos) return false;
-
-  pos++;
-  while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\n' || json[pos] == '\r' || json[pos] == '\t')) pos++;
-  if (pos >= json.size() || json[pos] != '"') return false;
-
-  pos++;
-  out->clear();
-  for (; pos < json.size(); ++pos) {
-    char c = json[pos];
-    if (c == '\\') {
-      if (pos + 1 >= json.size()) break;
-      out->push_back(json[pos + 1]);
-      pos++;
-      continue;
-    }
-    if (c == '"') return true;
-    out->push_back(c);
-  }
-  return false;
+static std::string get_string_or_default(const nlohmann::json& obj,
+                                         const char* key,
+                                         const std::string& def) {
+  if (!obj.is_object())
+    return def;
+  auto it = obj.find(key);
+  if (it == obj.end() || !it->is_string())
+    return def;
+  return it->get<std::string>();
 }
 
-static std::string extract_json_string_or_default(const std::string& json,
-                                                  const std::string& key,
-                                                  const std::string& def) {
-  auto pos = json.find('"' + key + '"');
-  if (pos == std::string::npos) return def;
-  std::string out;
-  if (!ExtractJsonString(json, key, &out)) return def;
-  return out;
+static std::optional<std::string> get_string_required(const nlohmann::json& obj, const char* key) {
+  if (!obj.is_object())
+    return std::nullopt;
+  auto it = obj.find(key);
+  if (it == obj.end() || !it->is_string())
+    return std::nullopt;
+  return it->get<std::string>();
 }
 
-static bool extract_json_bool_or_default(const std::string& json, const std::string& key, bool def) {
-  auto pos = json.find('"' + key + '"');
-  if (pos == std::string::npos) return def;
-  pos = json.find(':', pos);
-  if (pos == std::string::npos) return def;
-  pos++;
-  while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\n' || json[pos] == '\r' || json[pos] == '\t')) pos++;
-  if (json.compare(pos, 4, "true") == 0) return true;
-  if (json.compare(pos, 5, "false") == 0) return false;
-  return def;
+static bool get_bool_or_default(const nlohmann::json& obj, const char* key, bool def) {
+  if (!obj.is_object())
+    return def;
+  auto it = obj.find(key);
+  if (it == obj.end() || !it->is_boolean())
+    return def;
+  return it->get<bool>();
 }
 
-static int extract_json_int_or_default(const std::string& json, const std::string& key, int def) {
-  auto pos = json.find('"' + key + '"');
-  if (pos == std::string::npos) return def;
-  pos = json.find(':', pos);
-  if (pos == std::string::npos) return def;
-  pos++;
-  while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\n' || json[pos] == '\r' || json[pos] == '\t')) pos++;
-  std::string num;
-  while (pos < json.size() && (json[pos] == '-' || (json[pos] >= '0' && json[pos] <= '9'))) {
-    num.push_back(json[pos++]);
-  }
-
-  if (num.empty()) return def;
-
-  // Avoid std::stoi (throws on errors).
-  int sign = 1;
-  size_t i = 0;
-  if (num[0] == '-') {
-    sign = -1;
-    i = 1;
-  }
-  int v = 0;
-  for (; i < num.size(); ++i) {
-    const char c = num[i];
-    if (c < '0' || c > '9') return def;
-    v = v * 10 + (c - '0');
-  }
-  return sign * v;
+static int get_int_or_default(const nlohmann::json& obj, const char* key, int def) {
+  if (!obj.is_object())
+    return def;
+  auto it = obj.find(key);
+  if (it == obj.end() || !it->is_number_integer())
+    return def;
+  const auto v = it->get<long long>();
+  if (v < std::numeric_limits<int>::min() || v > std::numeric_limits<int>::max())
+    return def;
+  return static_cast<int>(v);
 }
 
 static std::string resolve_env_value(std::string v) {
@@ -133,31 +99,41 @@ AppConfig* load_config(const std::filesystem::path& path) {
   if (!ReadAll(expand_user_home(path), &json)) return nullptr;
 
   cfg = AppConfig{};
+
+  auto root_opt = agent::json::Parse(json);
+  if (!root_opt)
+    return nullptr;
+
+  const auto& root = *root_opt;
+
   cfg.llm.providers_json_path = expand_user_home(resolve_env_value(
-      extract_json_string_or_default(json, "providers_json_path", "~/.cpp-agent/llm.json")));
+      get_string_or_default(root, "providers_json_path", "~/.cpp-agent/llm.json")));
 
-  std::string model;
-  if (!ExtractJsonString(json, "model", &model)) return nullptr;
-  cfg.llm.model = resolve_env_value(std::move(model));
+  auto model = get_string_required(root, "model");
+  if (!model)
+    return nullptr;
+  cfg.llm.model = resolve_env_value(std::move(*model));
 
-  std::string project_root;
-  if (!ExtractJsonString(json, "project_root", &project_root)) return nullptr;
-  cfg.project_root = expand_user_home(resolve_env_value(std::move(project_root)));
+  auto project_root = get_string_required(root, "project_root");
+  if (!project_root)
+    return nullptr;
+  cfg.project_root = expand_user_home(resolve_env_value(std::move(*project_root)));
 
-  std::string storage_dir;
-  if (!ExtractJsonString(json, "storage_dir", &storage_dir)) return nullptr;
-  cfg.storage_dir = expand_user_home(resolve_env_value(std::move(storage_dir)));
+  auto storage_dir = get_string_required(root, "storage_dir");
+  if (!storage_dir)
+    return nullptr;
+  cfg.storage_dir = expand_user_home(resolve_env_value(std::move(*storage_dir)));
 
-  cfg.plan_prompt_path =
-      resolve_env_value(extract_json_string_or_default(json, "plan_prompt_path", "config/plan_prompt.md"));
+  cfg.plan_prompt_path = resolve_env_value(
+      get_string_or_default(root, "plan_prompt_path", "config/plan_prompt.md"));
   cfg.plan_prompt_path = expand_user_home(cfg.plan_prompt_path);
 
-  cfg.shell.enabled = extract_json_bool_or_default(json, "enabled", true);
-  cfg.shell.timeout_ms = extract_json_int_or_default(json, "timeout_ms", 60000);
+  cfg.shell.enabled = get_bool_or_default(root, "enabled", true);
+  cfg.shell.timeout_ms = get_int_or_default(root, "timeout_ms", 60000);
 
-  cfg.debug.log_llm = extract_json_bool_or_default(json, "log_llm", false);
+  cfg.debug.log_llm = get_bool_or_default(root, "log_llm", false);
 
   return &cfg;
 }
 
-} // namespace agent
+}  // namespace agent

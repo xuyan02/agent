@@ -1,5 +1,9 @@
 #include "infra/plan/plan_store.h"
 
+#include "infra/json/json.h"
+
+#include <nlohmann/json.hpp>
+
 #include <fstream>
 #include <sstream>
 
@@ -8,19 +12,10 @@ namespace agent {
 namespace {
 
 static std::string json_escape(const std::string& s) {
-  std::string out;
-  out.reserve(s.size() + 8);
-  for (char c : s) {
-    switch (c) {
-      case '"': out += "\\\""; break;
-      case '\\': out += "\\\\"; break;
-      case '\n': out += "\\n"; break;
-      case '\r': out += "\\r"; break;
-      case '\t': out += "\\t"; break;
-      default: out.push_back(c); break;
-    }
-  }
-  return out;
+  const std::string dumped = nlohmann::json(s).dump();
+  if (dumped.size() < 2)
+    return {};
+  return dumped.substr(1, dumped.size() - 2);
 }
 
 static std::string read_all(const std::filesystem::path& p) {
@@ -31,293 +26,97 @@ static std::string read_all(const std::filesystem::path& p) {
   return oss.str();
 }
 
-// Extremely small JSON reader for our fixed schema. We only support strings, arrays, and objects.
-// This is intentionally strict and best-effort.
-static size_t skip_ws(const std::string& s, size_t i) {
-  while (i < s.size() && (s[i] == ' ' || s[i] == '\n' || s[i] == '\r' || s[i] == '\t')) i++;
-  return i;
-}
+static Task task_from_json(const nlohmann::json& obj);
 
-static std::optional<std::string> parse_string(const std::string& s, size_t& i) {
-  i = skip_ws(s, i);
-  if (i >= s.size() || s[i] != '"') return std::nullopt;
-  i++;
-  std::string out;
-  while (i < s.size()) {
-    char c = s[i++];
-    if (c == '"') return out;
-    if (c == '\\') {
-      if (i >= s.size()) return std::nullopt;
-      char n = s[i++];
-      if (n == 'n') out.push_back('\n');
-      else if (n == 'r') out.push_back('\r');
-      else if (n == 't') out.push_back('\t');
-      else out.push_back(n);
-      continue;
-    }
-    out.push_back(c);
-  }
-  return std::nullopt;
-}
-
-static bool parse_bool_or_false(const std::string& s, size_t& i) {
-  i = skip_ws(s, i);
-  if (s.compare(i, 4, "true") == 0) {
-    i += 4;
-    return true;
-  }
-  if (s.compare(i, 5, "false") == 0) {
-    i += 5;
-    return false;
-  }
-  return false;
-}
-
-static bool expect(const std::string& s, size_t& i, char ch) {
-  i = skip_ws(s, i);
-  if (i >= s.size() || s[i] != ch) {
-    return false;
-  }
-  i++;
-  return true;
-}
-
-static void skip_value(const std::string& s, size_t& i);
-
-static bool skip_object(const std::string& s, size_t& i) {
-  if (!expect(s, i, '{')) return false;
-  for (;;) {
-    i = skip_ws(s, i);
-    if (i < s.size() && s[i] == '}') {
-      i++;
-      return true;
-    }
-    auto k = parse_string(s, i);
-    if (!k) return false;
-    if (!expect(s, i, ':')) return false;
-    skip_value(s, i);
-    i = skip_ws(s, i);
-    if (i < s.size() && s[i] == ',') i++;
-  }
-}
-
-static bool skip_array(const std::string& s, size_t& i) {
-  if (!expect(s, i, '[')) return false;
-  for (;;) {
-    i = skip_ws(s, i);
-    if (i < s.size() && s[i] == ']') {
-      i++;
-      return true;
-    }
-    skip_value(s, i);
-    i = skip_ws(s, i);
-    if (i < s.size() && s[i] == ',') i++;
-  }
-}
-
-static void skip_value(const std::string& s, size_t& i) {
-  i = skip_ws(s, i);
-  if (i >= s.size()) return;
-  if (s[i] == '"') {
-    auto tmp = parse_string(s, i);
-    if (!tmp) return;
-    return;
-  }
-  if (s[i] == '{') {
-    (void)skip_object(s, i);
-    return;
-  }
-  if (s[i] == '[') {
-    (void)skip_array(s, i);
-    return;
-  }
-  // bool/null/number
-  while (i < s.size() && s[i] != ',' && s[i] != ']' && s[i] != '}') i++;
-}
-
-static std::optional<std::string> find_string_field(const std::string& s, const std::string& key, size_t start, size_t end) {
-  auto pos = s.find('"' + key + '"', start);
-  if (pos == std::string::npos || pos >= end) return std::nullopt;
-  pos = s.find(':', pos);
-  if (pos == std::string::npos || pos >= end) return std::nullopt;
-  pos++;
-  size_t i = pos;
-  auto str = parse_string(s, i);
-  return str;
-}
-
-static bool find_bool_field(const std::string& s, const std::string& key, size_t start, size_t end) {
-  auto pos = s.find('"' + key + '"', start);
-  if (pos == std::string::npos || pos >= end) return false;
-  pos = s.find(':', pos);
-  if (pos == std::string::npos || pos >= end) return false;
-  pos++;
-  size_t i = pos;
-  return parse_bool_or_false(s, i);
-}
-
-static std::vector<std::string> parse_string_array_field(const std::string& s,
-                                                         const std::string& key,
-                                                         size_t start,
-                                                         size_t end) {
-  auto pos = s.find('"' + key + '"', start);
-  if (pos == std::string::npos || pos >= end) return {};
-  pos = s.find(':', pos);
-  if (pos == std::string::npos || pos >= end) return {};
-  pos++;
-  size_t i = skip_ws(s, pos);
-  if (i >= s.size() || s[i] != '[') return {};
-  i++;
-  std::vector<std::string> out;
-  for (;;) {
-    i = skip_ws(s, i);
-    if (i >= s.size()) break;
-    if (s[i] == ']') {
-      i++;
-      break;
-    }
-    auto str = parse_string(s, i);
-    if (!str) break;
-    out.push_back(*str);
-    i = skip_ws(s, i);
-    if (i < s.size() && s[i] == ',') i++;
-  }
-  return out;
-}
-
-static size_t find_field_value_start(const std::string& s, const std::string& key, size_t start, size_t end) {
-  auto pos = s.find('"' + key + '"', start);
-  if (pos == std::string::npos || pos >= end) return std::string::npos;
-  pos = s.find(':', pos);
-  if (pos == std::string::npos || pos >= end) return std::string::npos;
-  pos++;
-  return skip_ws(s, pos);
-}
-
-static size_t span_json_value(const std::string& s, size_t i) {
-  i = skip_ws(s, i);
-  if (i >= s.size()) return i;
-  if (s[i] == '"') {
-    size_t j = i;
-    auto tmp = parse_string(s, j);
-    (void)tmp;
-    return j;
-  }
-  if (s[i] == '{') {
-    size_t j = i;
-    (void)skip_object(s, j);
-    return j;
-  }
-  if (s[i] == '[') {
-    size_t j = i;
-    (void)skip_array(s, j);
-    return j;
-  }
-  while (i < s.size() && s[i] != ',' && s[i] != ']' && s[i] != '}') i++;
-  return i;
-}
-
-static Task parse_task_object(const std::string& s, size_t start, size_t end);
-
-static std::vector<Task> parse_tasks_array(const std::string& s, size_t start, size_t end) {
-  size_t i = skip_ws(s, start);
-  if (i >= s.size() || s[i] != '[') return {};
-  i++;
+static std::vector<Task> tasks_from_json_array(const nlohmann::json& arr) {
   std::vector<Task> out;
-  for (;;) {
-    i = skip_ws(s, i);
-    if (i >= s.size()) break;
-    if (s[i] == ']') {
-      i++;
-      break;
-    }
-    if (s[i] != '{') {
-      // skip unknown
-      skip_value(s, i);
-    } else {
-      size_t obj_start = i;
-      size_t obj_end = span_json_value(s, i);
-      out.push_back(parse_task_object(s, obj_start, obj_end));
-      i = obj_end;
-    }
-    i = skip_ws(s, i);
-    if (i < s.size() && s[i] == ',') i++;
+  if (!arr.is_array())
+    return out;
+
+  out.reserve(arr.size());
+  for (const auto& v : arr) {
+    if (v.is_object())
+      out.push_back(task_from_json(v));
   }
   return out;
 }
 
-static Task parse_task_object(const std::string& s, size_t start, size_t end) {
+static Task task_from_json(const nlohmann::json& obj) {
   Task t;
-  auto goal = find_string_field(s, "goal", start, end);
-  auto title = find_string_field(s, "title", start, end);
-  if (goal) t.goal = *goal;
-  if (title) t.title = *title;
-  t.active = find_bool_field(s, "active", start, end);
-  t.completed = find_bool_field(s, "completed", start, end);
-  t.history = parse_string_array_field(s, "history", start, end);
+  if (!obj.is_object())
+    return t;
 
-  auto children_pos = find_field_value_start(s, "children", start, end);
-  if (children_pos != std::string::npos) {
-    size_t children_end = span_json_value(s, children_pos);
-    t.children = parse_tasks_array(s, children_pos, children_end);
+  if (auto it = obj.find("goal"); it != obj.end() && it->is_string())
+    t.goal = it->get<std::string>();
+  if (auto it = obj.find("title"); it != obj.end() && it->is_string())
+    t.title = it->get<std::string>();
+  if (auto it = obj.find("active"); it != obj.end() && it->is_boolean())
+    t.active = it->get<bool>();
+  if (auto it = obj.find("completed"); it != obj.end() && it->is_boolean())
+    t.completed = it->get<bool>();
+
+  if (auto it = obj.find("history"); it != obj.end() && it->is_array()) {
+    for (const auto& h : *it) {
+      if (h.is_string())
+        t.history.push_back(h.get<std::string>());
+    }
   }
+
+  if (auto it = obj.find("children"); it != obj.end() && it->is_array()) {
+    t.children = tasks_from_json_array(*it);
+  }
+
   return t;
 }
 
-static Plan parse_plan_or_empty(const std::string& s) {
+static Plan parse_plan_or_empty(const std::string& json_text) {
   Plan p;
-  if (s.empty()) return p;
+  auto root_opt = agent::json::Parse(json_text);
+  if (!root_opt || !root_opt->is_object())
+    return p;
 
-  auto vpos = s.find("\"version\"");
-  if (vpos == std::string::npos) return p;
+  const auto& root = *root_opt;
+  if (auto it = root.find("version"); it != root.end() && it->is_number_integer()) {
+    p.version = it->get<int>();
+  }
+  if (auto it = root.find("tasks"); it != root.end() && it->is_array()) {
+    p.tasks = tasks_from_json_array(*it);
+  }
 
-  auto tasks_pos = s.find("\"tasks\"");
-  if (tasks_pos == std::string::npos) return p;
-  auto arr_start = s.find('[', tasks_pos);
-  if (arr_start == std::string::npos) return p;
-  size_t arr_end = span_json_value(s, arr_start);
-  p.tasks = parse_tasks_array(s, arr_start, arr_end);
   return p;
 }
 
-static void write_task_json(std::ostringstream& oss, const Task& t) {
-  oss << "{";
-  oss << "\"goal\":\"" << json_escape(t.goal) << "\",";
-  oss << "\"title\":\"" << json_escape(t.title) << "\"";
-  if (t.active) {
-    oss << ",\"active\":true";
-  }
-  if (t.completed) {
-    oss << ",\"completed\":true";
-  }
-  if (!t.history.empty()) {
-    oss << ",\"history\":[";
-    for (size_t i = 0; i < t.history.size(); ++i) {
-      if (i) oss << ',';
-      oss << "\"" << json_escape(t.history[i]) << "\"";
-    }
-    oss << "]";
-  }
+static nlohmann::json task_to_json(const Task& t) {
+  nlohmann::json obj = nlohmann::json::object();
+  obj["goal"] = t.goal;
+  obj["title"] = t.title;
+  if (t.active)
+    obj["active"] = true;
+  if (t.completed)
+    obj["completed"] = true;
+
+  if (!t.history.empty())
+    obj["history"] = t.history;
+
   if (!t.children.empty()) {
-    oss << ",\"children\":[";
-    for (size_t i = 0; i < t.children.size(); ++i) {
-      if (i) oss << ',';
-      write_task_json(oss, t.children[i]);
-    }
-    oss << "]";
+    nlohmann::json children = nlohmann::json::array();
+    for (const auto& c : t.children)
+      children.push_back(task_to_json(c));
+    obj["children"] = std::move(children);
   }
-  oss << "}";
+  return obj;
 }
 
 static std::string serialize_plan_json(const Plan& p) {
-  std::ostringstream oss;
-  oss << "{\"version\":" << p.version << ",\"tasks\":[";
-  for (size_t i = 0; i < p.tasks.size(); ++i) {
-    if (i) oss << ',';
-    write_task_json(oss, p.tasks[i]);
-  }
-  oss << "]}";
-  return oss.str();
+  nlohmann::json root = nlohmann::json::object();
+  root["version"] = p.version;
+
+  nlohmann::json tasks = nlohmann::json::array();
+  for (const auto& t : p.tasks)
+    tasks.push_back(task_to_json(t));
+  root["tasks"] = std::move(tasks);
+
+  return agent::json::Dump(root);
 }
 
 static void render_task(std::ostringstream& oss,
@@ -740,4 +539,4 @@ void PlanStore::persist_locked() {
   ofs << serialize_plan_json(plan_);
 }
 
-} // namespace agent
+}  // namespace agent

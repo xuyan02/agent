@@ -1,5 +1,9 @@
 #include "infra/http/openai_client.h"
 
+#include "infra/json/json.h"
+
+#include <nlohmann/json.hpp>
+
 #include <curl/curl.h>
 
 #include <iostream>
@@ -15,19 +19,11 @@ static size_t write_cb(char* ptr, size_t size, size_t nmemb, void* userdata) {
 }
 
 static std::string json_escape(const std::string& in) {
-  std::string out;
-  out.reserve(in.size() + 16);
-  for (char c : in) {
-    switch (c) {
-    case '\\': out += "\\\\"; break;
-    case '"': out += "\\\""; break;
-    case '\n': out += "\\n"; break;
-    case '\r': out += "\\r"; break;
-    case '\t': out += "\\t"; break;
-    default: out.push_back(c); break;
-    }
-  }
-  return out;
+  // Convert to a properly escaped JSON string (without surrounding quotes).
+  const std::string dumped = nlohmann::json(in).dump();
+  if (dumped.size() < 2)
+    return {};
+  return dumped.substr(1, dumped.size() - 2);
 }
 
 static const char* role_to_string(agent::LlmRole r) {
@@ -91,163 +87,62 @@ static std::string build_request_json(const std::vector<agent::LlmMessage>& mess
   return oss.str();
 }
 
-static std::string extract_json_string_field_or_empty(const std::string& json,
-                                                     const std::string& key,
-                                                     size_t start_pos = 0) {
-  auto pos = json.find('"' + key + '"', start_pos);
-  if (pos == std::string::npos) return {};
-  pos = json.find(':', pos);
-  if (pos == std::string::npos) return {};
-  pos++;
-  while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\n' || json[pos] == '\r' || json[pos] == '\t')) pos++;
-  if (pos >= json.size() || json[pos] != '"') return {};
-  pos++;
-  std::string out;
-  for (; pos < json.size(); ++pos) {
-    char c = json[pos];
-    if (c == '\\') {
-      if (pos + 1 >= json.size()) break;
-      char n = json[pos + 1];
-      if (n == 'n') out.push_back('\n');
-      else if (n == 'r') out.push_back('\r');
-      else if (n == 't') out.push_back('\t');
-      else out.push_back(n);
-      pos++;
-      continue;
-    }
-    if (c == '"') break;
-    out.push_back(c);
-  }
-  return out;
+static std::string extract_json_string_field_or_empty(const nlohmann::json& obj,
+                                                     const std::string& key) {
+  if (!obj.is_object())
+    return {};
+  auto it = obj.find(key);
+  if (it == obj.end() || !it->is_string())
+    return {};
+  return it->get<std::string>();
 }
 
-static size_t skip_ws(const std::string& json, size_t i) {
-  while (i < json.size() && (json[i] == ' ' || json[i] == '\n' || json[i] == '\r' || json[i] == '\t')) i++;
-  return i;
-}
-
-static size_t skip_json_string(const std::string& json, size_t i) {
-  // i points to opening '"'
-  if (i >= json.size() || json[i] != '"') return i;
-  i++;
-  while (i < json.size()) {
-    if (json[i] == '\\') {
-      i += 2;
-      continue;
-    }
-    if (json[i] == '"') return i + 1;
-    i++;
-  }
-  return i;
-}
-
-static size_t skip_json_value(const std::string& json, size_t i);
-
-static size_t skip_json_array(const std::string& json, size_t i) {
-  if (i >= json.size() || json[i] != '[') return i;
-  i++;
-  for (;;) {
-    i = skip_ws(json, i);
-    if (i >= json.size()) return i;
-    if (json[i] == ']') return i + 1;
-    i = skip_json_value(json, i);
-    i = skip_ws(json, i);
-    if (i < json.size() && json[i] == ',') i++;
-  }
-}
-
-static size_t skip_json_object(const std::string& json, size_t i) {
-  if (i >= json.size() || json[i] != '{') return i;
-  i++;
-  for (;;) {
-    i = skip_ws(json, i);
-    if (i >= json.size()) return i;
-    if (json[i] == '}') return i + 1;
-    i = skip_json_string(json, i);
-    i = skip_ws(json, i);
-    if (i < json.size() && json[i] == ':') i++;
-    i = skip_ws(json, i);
-    i = skip_json_value(json, i);
-    i = skip_ws(json, i);
-    if (i < json.size() && json[i] == ',') i++;
-  }
-}
-
-static size_t skip_json_value(const std::string& json, size_t i) {
-  i = skip_ws(json, i);
-  if (i >= json.size()) return i;
-  char c = json[i];
-  if (c == '"') return skip_json_string(json, i);
-  if (c == '{') return skip_json_object(json, i);
-  if (c == '[') return skip_json_array(json, i);
-  // number, true, false, null
-  while (i < json.size() && json[i] != ',' && json[i] != ']' && json[i] != '}' && json[i] != '\n' && json[i] != '\r') i++;
-  return i;
-}
-
-static std::string extract_raw_json_field_or_empty(const std::string& json,
-                                                  const std::string& key,
-                                                  size_t start_pos = 0) {
-  auto pos = json.find('"' + key + '"', start_pos);
-  if (pos == std::string::npos) return {};
-  pos = json.find(':', pos);
-  if (pos == std::string::npos) return {};
-  pos++;
-  pos = skip_ws(json, pos);
-  if (pos >= json.size()) return {};
-
-  size_t end = skip_json_value(json, pos);
-  if (end <= pos || end > json.size()) return {};
-  return json.substr(pos, end - pos);
-}
-
-static bool extract_llm_response(const std::string& json, agent::LlmResponse* out) {
+static bool extract_llm_response(const std::string& json_text, agent::LlmResponse* out) {
   *out = agent::LlmResponse{};
   out->assistant_message.role = agent::LlmRole::kAssistant;
 
-  // Very small parser: locate first message object under choices[0].message.
-  auto msg_pos = json.find("\"message\"");
-  if (msg_pos == std::string::npos) {
+  auto root_opt = agent::json::Parse(json_text);
+  if (!root_opt)
     return false;
-  }
 
-  // content
-  out->assistant_message.content = extract_json_string_field_or_empty(json, "content", msg_pos);
+  const auto& root = *root_opt;
+  if (!root.is_object())
+    return false;
+
+  auto choices_it = root.find("choices");
+  if (choices_it == root.end() || !choices_it->is_array() || choices_it->empty())
+    return false;
+
+  const auto& choice0 = (*choices_it)[0];
+  if (!choice0.is_object())
+    return false;
+
+  auto msg_it = choice0.find("message");
+  if (msg_it == choice0.end() || !msg_it->is_object())
+    return false;
+
+  const auto& msg = *msg_it;
+  out->assistant_message.content = extract_json_string_field_or_empty(msg, "content");
 
   // tool_calls (OpenAI): choices[0].message.tool_calls
-  auto tool_calls_raw = extract_raw_json_field_or_empty(json, "tool_calls", msg_pos);
-  if (!tool_calls_raw.empty() && tool_calls_raw.front() == '[') {
-    // Parse each element as object by scanning.
-    size_t i = 0;
-    i++; // skip '['
-    for (;;) {
-      i = skip_ws(tool_calls_raw, i);
-      if (i >= tool_calls_raw.size() || tool_calls_raw[i] == ']') break;
-      if (tool_calls_raw[i] != '{') {
-        i++;
+  auto tc_it = msg.find("tool_calls");
+  if (tc_it != msg.end() && tc_it->is_array()) {
+    for (const auto& tc_obj : *tc_it) {
+      if (!tc_obj.is_object())
         continue;
-      }
-      size_t obj_end = skip_json_object(tool_calls_raw, i);
-      if (obj_end <= i || obj_end > tool_calls_raw.size()) break;
-      std::string obj = tool_calls_raw.substr(i, obj_end - i);
 
       agent::LlmToolCall tc;
-      tc.id = extract_json_string_field_or_empty(obj, "id");
-      // name is in function.name; arguments in function.arguments
-      auto fn_raw = extract_raw_json_field_or_empty(obj, "function");
-      if (!fn_raw.empty() && fn_raw.front() == '{') {
-        tc.name = extract_json_string_field_or_empty(fn_raw, "name");
-        tc.arguments_json = extract_json_string_field_or_empty(fn_raw, "arguments");
-        // arguments is a JSON-string; unescape minimal backslash sequences already handled in extract_json_string
+      tc.id = extract_json_string_field_or_empty(tc_obj, "id");
+
+      auto fn_it = tc_obj.find("function");
+      if (fn_it != tc_obj.end() && fn_it->is_object()) {
+        tc.name = extract_json_string_field_or_empty(*fn_it, "name");
+        tc.arguments_json = extract_json_string_field_or_empty(*fn_it, "arguments");
       }
 
       if (!tc.id.empty() && !tc.name.empty()) {
         out->assistant_message.tool_calls.push_back(std::move(tc));
       }
-
-      i = obj_end;
-      i = skip_ws(tool_calls_raw, i);
-      if (i < tool_calls_raw.size() && tool_calls_raw[i] == ',') i++;
     }
   }
 
@@ -331,4 +226,4 @@ agent::LlmResponse OpenAIClient::Complete(
   return parsed;
 }
 
-} // namespace agent
+}  // namespace agent

@@ -1,5 +1,9 @@
 #include "runtime/plan2/plan2_functions.h"
 
+#include "infra/json/json.h"
+
+#include <nlohmann/json.hpp>
+
 #include <sstream>
 
 #include "runtime/plan2/plan2_model.h"
@@ -7,166 +11,105 @@
 namespace agent::plan2 {
 namespace {
 
-static std::string json_escape(const std::string& s) {
-  std::string out;
-  out.reserve(s.size() + 8);
-  for (char c : s) {
-    switch (c) {
-      case '\\':
-        out += "\\\\";
-        break;
-      case '"':
-        out += "\\\"";
-        break;
-      case '\n':
-        out += "\\n";
-        break;
-      case '\r':
-        out += "\\r";
-        break;
-      case '\t':
-        out += "\\t";
-        break;
-      default:
-        out.push_back(c);
-        break;
-    }
-  }
-  return out;
+static std::optional<std::string> get_string_required(const nlohmann::json& obj, const char* key) {
+  if (!obj.is_object())
+    return std::nullopt;
+  auto it = obj.find(key);
+  if (it == obj.end() || !it->is_string())
+    return std::nullopt;
+  return it->get<std::string>();
 }
 
-static std::string extract_json_string_or_empty(const std::string& json, const std::string& key) {
-  auto pos = json.find('"' + key + '"');
-  if (pos == std::string::npos) return {};
-  pos = json.find(':', pos);
-  if (pos == std::string::npos) return {};
-  pos++;
-  while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\n' || json[pos] == '\r' || json[pos] == '\t')) pos++;
-  if (pos >= json.size() || json[pos] != '"') return {};
-  pos++;
-  std::string out;
-  for (; pos < json.size(); ++pos) {
-    const char c = json[pos];
-    if (c == '\\') {
-      if (pos + 1 >= json.size()) break;
-      out.push_back(json[pos + 1]);
-      pos++;
-      continue;
-    }
-    if (c == '"') break;
-    out.push_back(c);
-  }
-  return out;
-}
-
-static std::vector<std::string> extract_json_string_array_or_empty(const std::string& json, const std::string& key) {
+static std::vector<std::string> get_string_array_or_empty(const nlohmann::json& obj, const char* key) {
   std::vector<std::string> out;
-  auto pos = json.find('"' + key + '"');
-  if (pos == std::string::npos) return out;
-  pos = json.find(':', pos);
-  if (pos == std::string::npos) return out;
-  pos++;
-  while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\n' || json[pos] == '\r' || json[pos] == '\t')) pos++;
-  if (pos >= json.size() || json[pos] != '[') return out;
-  pos++;
-
-  while (pos < json.size()) {
-    while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\n' || json[pos] == '\r' || json[pos] == '\t')) pos++;
-    if (pos >= json.size()) break;
-    if (json[pos] == ']') break;
-    if (json[pos] == ',') {
-      pos++;
-      continue;
-    }
-    if (json[pos] != '"') {
-      // non-string element not supported
-      return {};
-    }
-    pos++;
-    std::string s;
-    for (; pos < json.size(); ++pos) {
-      const char c = json[pos];
-      if (c == '\\') {
-        if (pos + 1 >= json.size()) break;
-        s.push_back(json[pos + 1]);
-        pos++;
-        continue;
-      }
-      if (c == '"') break;
-      s.push_back(c);
-    }
-    out.push_back(std::move(s));
-    if (pos < json.size() && json[pos] == '"') pos++;
+  if (!obj.is_object())
+    return out;
+  auto it = obj.find(key);
+  if (it == obj.end() || !it->is_array())
+    return out;
+  for (const auto& v : *it) {
+    if (v.is_string())
+      out.push_back(v.get<std::string>());
   }
-
   return out;
 }
 
-static std::string ids_to_json_array(const std::vector<std::string>& ids) {
-  std::ostringstream oss;
-  oss << '[';
-  for (size_t i = 0; i < ids.size(); ++i) {
-    if (i) oss << ',';
-    oss << "\"" << json_escape(ids[i]) << "\"";
-  }
-  oss << ']';
-  return oss.str();
+static nlohmann::json ids_to_json_array(const std::vector<std::string>& ids) {
+  nlohmann::json arr = nlohmann::json::array();
+  for (const auto& id : ids)
+    arr.push_back(id);
+  return arr;
 }
 
-static std::string task_to_json(const Task& t) {
-  std::ostringstream oss;
-  oss << '{';
-  oss << "\"id\":\"" << json_escape(t.id) << "\"";
-  oss << ",\"name\":\"" << json_escape(t.name) << "\"";
-  oss << ",\"description\":\"" << json_escape(t.description) << "\"";
-  oss << ",\"goal\":\"" << json_escape(t.goal) << "\"";
-  oss << ",\"status\":\"" << json_escape(StatusToString(t.status)) << "\"";
+static nlohmann::json task_to_json_obj(const Task& t) {
+  nlohmann::json obj = nlohmann::json::object();
+  obj["id"] = t.id;
+  obj["name"] = t.name;
+  obj["description"] = t.description;
+  obj["goal"] = t.goal;
+  obj["status"] = StatusToString(t.status);
 
-  if (t.parent_id.has_value()) {
-    oss << ",\"parent_id\":\"" << json_escape(*t.parent_id) << "\"";
-  }
+  if (t.parent_id.has_value())
+    obj["parent_id"] = *t.parent_id;
 
-  oss << ",\"depends_on\":[";
-  for (size_t i = 0; i < t.depends_on.size(); ++i) {
-    if (i) oss << ',';
-    oss << "\"" << json_escape(t.depends_on[i]) << "\"";
-  }
-  oss << ']';
+  obj["depends_on"] = t.depends_on;
 
-  if (!t.parent_id.has_value() && t.report_to.has_value()) {
-    oss << ",\"report_to\":\"" << json_escape(*t.report_to) << "\"";
-  }
+  if (!t.parent_id.has_value() && t.report_to.has_value())
+    obj["report_to"] = *t.report_to;
 
-  if (t.status == Status::kWaiting || t.status == Status::kAbandoned) {
-    oss << ",\"reason\":\"" << json_escape(t.reason) << "\"";
-  }
+  if (t.status == Status::kWaiting || t.status == Status::kAbandoned)
+    obj["reason"] = t.reason;
 
-  oss << '}';
-  return oss.str();
+  return obj;
 }
 
-static std::string ok_empty() { return "{\"ok\":true}"; }
+static std::string ok_empty() {
+  nlohmann::json root = nlohmann::json::object();
+  root["ok"] = true;
+  return agent::json::Dump(root);
+}
+
 static std::string ok_deleted(const std::vector<std::string>& deleted) {
-  std::ostringstream oss;
-  oss << "{\"ok\":true,\"deleted\":" << ids_to_json_array(deleted) << '}';
-  return oss.str();
+  nlohmann::json root = nlohmann::json::object();
+  root["ok"] = true;
+  root["deleted"] = ids_to_json_array(deleted);
+  return agent::json::Dump(root);
 }
 
 static std::string ok_updated(const std::vector<Task>& updated) {
-  std::ostringstream oss;
-  oss << "{\"ok\":true,\"updated\":[";
-  for (size_t i = 0; i < updated.size(); ++i) {
-    if (i) oss << ',';
-    oss << task_to_json(updated[i]);
-  }
-  oss << "]}";
-  return oss.str();
+  nlohmann::json root = nlohmann::json::object();
+  root["ok"] = true;
+
+  nlohmann::json arr = nlohmann::json::array();
+  for (const auto& t : updated)
+    arr.push_back(task_to_json_obj(t));
+  root["updated"] = std::move(arr);
+
+  return agent::json::Dump(root);
 }
 
 static std::string ok_created(const Task& created) {
-  std::ostringstream oss;
-  oss << "{\"ok\":true,\"created\":" << task_to_json(created) << '}';
-  return oss.str();
+  nlohmann::json root = nlohmann::json::object();
+  root["ok"] = true;
+  root["created"] = task_to_json_obj(created);
+  return agent::json::Dump(root);
+}
+
+static std::string schema_add_task() {
+  nlohmann::json root = nlohmann::json::object();
+  root["type"] = "object";
+
+  nlohmann::json props = nlohmann::json::object();
+  props["name"] = nlohmann::json::object({{"type", "string"}});
+  props["description"] = nlohmann::json::object({{"type", "string"}});
+  props["goal"] = nlohmann::json::object({{"type", "string"}});
+  props["report_to"] = nlohmann::json::object({{"type", "string"}});
+  props["depends_on"] = nlohmann::json::object(
+      {{"type", "array"}, {"items", nlohmann::json::object({{"type", "string"}})}});
+  root["properties"] = std::move(props);
+
+  root["required"] = nlohmann::json::array({"name", "description", "goal", "report_to"});
+  return agent::json::Dump(root);
 }
 
 } // namespace
@@ -174,32 +117,35 @@ static std::string ok_created(const Task& created) {
 PlanAddTaskFunction::PlanAddTaskFunction(PlanModel* plan) : plan_(plan) {
   spec_.name = "plan.add_task";
   spec_.description = "Add one top-level task.";
-  spec_.parameters_json =
-      "{"
-      "\"type\":\"object\","
-      "\"properties\":{"
-      "\"name\":{\"type\":\"string\"},"
-      "\"description\":{\"type\":\"string\"},"
-      "\"goal\":{\"type\":\"string\"},"
-      "\"report_to\":{\"type\":\"string\"},"
-      "\"depends_on\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}"
-      "},"
-      "\"required\":[\"name\",\"description\",\"goal\",\"report_to\"]"
-      "}";
+  spec_.parameters_json = schema_add_task();
 }
 
 const agent::FunctionSpec& PlanAddTaskFunction::spec() const { return spec_; }
 
 void PlanAddTaskFunction::InvokeAsync(std::string arguments_json, OnDone done) {
+  auto args_opt = agent::json::Parse(arguments_json);
+  if (!args_opt) {
+    std::move(done)("", "invalid JSON arguments");
+    return;
+  }
+
+  const auto& args = *args_opt;
+
   AddTaskInput in;
-  in.name = extract_json_string_or_empty(arguments_json, "name");
-  in.description = extract_json_string_or_empty(arguments_json, "description");
-  in.goal = extract_json_string_or_empty(arguments_json, "goal");
+  auto name = get_string_required(args, "name");
+  auto description = get_string_required(args, "description");
+  auto goal = get_string_required(args, "goal");
+  auto report_to = get_string_required(args, "report_to");
+  if (!name || !description || !goal || !report_to) {
+    std::move(done)("", "missing required string field");
+    return;
+  }
 
-  const std::string report_to = extract_json_string_or_empty(arguments_json, "report_to");
-  if (!report_to.empty()) in.report_to = report_to;
-
-  in.depends_on = extract_json_string_array_or_empty(arguments_json, "depends_on");
+  in.name = *name;
+  in.description = *description;
+  in.goal = *goal;
+  in.report_to = *report_to;
+  in.depends_on = get_string_array_or_empty(args, "depends_on");
 
   const AddTaskResult r = plan_->AddTask(in);
   if (!r.error.empty()) {
@@ -213,29 +159,49 @@ void PlanAddTaskFunction::InvokeAsync(std::string arguments_json, OnDone done) {
 PlanAddSubtaskFunction::PlanAddSubtaskFunction(PlanModel* plan) : plan_(plan) {
   spec_.name = "plan.add_subtask";
   spec_.description = "Add one subtask under a parent.";
-  spec_.parameters_json =
-      "{"
-      "\"type\":\"object\","
-      "\"properties\":{"
-      "\"parent_id\":{\"type\":\"string\"},"
-      "\"name\":{\"type\":\"string\"},"
-      "\"description\":{\"type\":\"string\"},"
-      "\"goal\":{\"type\":\"string\"},"
-      "\"depends_on\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}"
-      "},"
-      "\"required\":[\"parent_id\",\"name\",\"description\",\"goal\"]"
-      "}";
+
+  nlohmann::json root = nlohmann::json::object();
+  root["type"] = "object";
+
+  nlohmann::json props = nlohmann::json::object();
+  props["parent_id"] = nlohmann::json::object({{"type", "string"}});
+  props["name"] = nlohmann::json::object({{"type", "string"}});
+  props["description"] = nlohmann::json::object({{"type", "string"}});
+  props["goal"] = nlohmann::json::object({{"type", "string"}});
+  props["depends_on"] = nlohmann::json::object(
+      {{"type", "array"}, {"items", nlohmann::json::object({{"type", "string"}})}});
+  root["properties"] = std::move(props);
+
+  root["required"] = nlohmann::json::array({"parent_id", "name", "description", "goal"});
+  spec_.parameters_json = agent::json::Dump(root);
 }
 
 const agent::FunctionSpec& PlanAddSubtaskFunction::spec() const { return spec_; }
 
 void PlanAddSubtaskFunction::InvokeAsync(std::string arguments_json, OnDone done) {
+  auto args_opt = agent::json::Parse(arguments_json);
+  if (!args_opt) {
+    std::move(done)("", "invalid JSON arguments");
+    return;
+  }
+
+  const auto& args = *args_opt;
+
   AddSubtaskInput in;
-  in.parent_id = extract_json_string_or_empty(arguments_json, "parent_id");
-  in.name = extract_json_string_or_empty(arguments_json, "name");
-  in.description = extract_json_string_or_empty(arguments_json, "description");
-  in.goal = extract_json_string_or_empty(arguments_json, "goal");
-  in.depends_on = extract_json_string_array_or_empty(arguments_json, "depends_on");
+  auto parent_id = get_string_required(args, "parent_id");
+  auto name = get_string_required(args, "name");
+  auto description = get_string_required(args, "description");
+  auto goal = get_string_required(args, "goal");
+  if (!parent_id || !name || !description || !goal) {
+    std::move(done)("", "missing required string field");
+    return;
+  }
+
+  in.parent_id = *parent_id;
+  in.name = *name;
+  in.description = *description;
+  in.goal = *goal;
+  in.depends_on = get_string_array_or_empty(args, "depends_on");
 
   const AddSubtaskResult r = plan_->AddSubtask(in);
   if (!r.error.empty()) {
@@ -262,13 +228,19 @@ PlanActivateTaskFunction::PlanActivateTaskFunction(PlanModel* plan) : plan_(plan
 const agent::FunctionSpec& PlanActivateTaskFunction::spec() const { return spec_; }
 
 void PlanActivateTaskFunction::InvokeAsync(std::string arguments_json, OnDone done) {
-  const std::string id = extract_json_string_or_empty(arguments_json, "id");
-  if (id.empty()) {
+  auto args_opt = agent::json::Parse(arguments_json);
+  if (!args_opt) {
+    std::move(done)("", "invalid JSON arguments");
+    return;
+  }
+
+  auto id = get_string_required(*args_opt, "id");
+  if (!id) {
     std::move(done)("", "Missing argument: id");
     return;
   }
 
-  const ActivateResult r = plan_->ActivateTask(id);
+  const ActivateResult r = plan_->ActivateTask(*id);
   if (!r.error.empty()) {
     std::move(done)("", r.error);
     return;
@@ -280,28 +252,38 @@ void PlanActivateTaskFunction::InvokeAsync(std::string arguments_json, OnDone do
 PlanSuspendTaskFunction::PlanSuspendTaskFunction(PlanModel* plan) : plan_(plan) {
   spec_.name = "plan.suspend_task";
   spec_.description = "Suspend an active task into waiting with a required reason.";
-  spec_.parameters_json =
-      "{"
-      "\"type\":\"object\","
-      "\"properties\":{"
-      "\"id\":{\"type\":\"string\"},"
-      "\"reason\":{\"type\":\"string\"}"
-      "},"
-      "\"required\":[\"id\",\"reason\"]"
-      "}";
+
+  nlohmann::json root = nlohmann::json::object();
+  root["type"] = "object";
+  root["properties"] = nlohmann::json::object({
+      {"id", nlohmann::json::object({{"type", "string"}})},
+      {"reason", nlohmann::json::object({{"type", "string"}})},
+  });
+  root["required"] = nlohmann::json::array({"id", "reason"});
+  spec_.parameters_json = agent::json::Dump(root);
 }
 
 const agent::FunctionSpec& PlanSuspendTaskFunction::spec() const { return spec_; }
 
 void PlanSuspendTaskFunction::InvokeAsync(std::string arguments_json, OnDone done) {
-  const std::string id = extract_json_string_or_empty(arguments_json, "id");
-  const std::string reason = extract_json_string_or_empty(arguments_json, "reason");
-  if (id.empty()) {
-    std::move(done)("", "Missing argument: id");
+  auto args_opt = agent::json::Parse(arguments_json);
+  if (!args_opt) {
+    std::move(done)("", "invalid JSON arguments");
     return;
   }
 
-  const SimpleResult r = plan_->SuspendTask(id, reason);
+  auto id = get_string_required(*args_opt, "id");
+  auto reason = get_string_required(*args_opt, "reason");
+  if (!id) {
+    std::move(done)("", "Missing argument: id");
+    return;
+  }
+  if (!reason) {
+    std::move(done)("", "Missing argument: reason");
+    return;
+  }
+
+  const SimpleResult r = plan_->SuspendTask(*id, *reason);
   if (!r.error.empty()) {
     std::move(done)("", r.error);
     return;
@@ -313,26 +295,32 @@ void PlanSuspendTaskFunction::InvokeAsync(std::string arguments_json, OnDone don
 PlanResumeTaskFunction::PlanResumeTaskFunction(PlanModel* plan) : plan_(plan) {
   spec_.name = "plan.resume_task";
   spec_.description = "Resume a waiting task back to ready.";
-  spec_.parameters_json =
-      "{"
-      "\"type\":\"object\","
-      "\"properties\":{"
-      "\"id\":{\"type\":\"string\"}"
-      "},"
-      "\"required\":[\"id\"]"
-      "}";
+
+  nlohmann::json root = nlohmann::json::object();
+  root["type"] = "object";
+  root["properties"] = nlohmann::json::object({
+      {"id", nlohmann::json::object({{"type", "string"}})},
+  });
+  root["required"] = nlohmann::json::array({"id"});
+  spec_.parameters_json = agent::json::Dump(root);
 }
 
 const agent::FunctionSpec& PlanResumeTaskFunction::spec() const { return spec_; }
 
 void PlanResumeTaskFunction::InvokeAsync(std::string arguments_json, OnDone done) {
-  const std::string id = extract_json_string_or_empty(arguments_json, "id");
-  if (id.empty()) {
+  auto args_opt = agent::json::Parse(arguments_json);
+  if (!args_opt) {
+    std::move(done)("", "invalid JSON arguments");
+    return;
+  }
+
+  auto id = get_string_required(*args_opt, "id");
+  if (!id) {
     std::move(done)("", "Missing argument: id");
     return;
   }
 
-  const SimpleResult r = plan_->ResumeTask(id);
+  const SimpleResult r = plan_->ResumeTask(*id);
   if (!r.error.empty()) {
     std::move(done)("", r.error);
     return;
@@ -344,26 +332,32 @@ void PlanResumeTaskFunction::InvokeAsync(std::string arguments_json, OnDone done
 PlanCompleteTaskFunction::PlanCompleteTaskFunction(PlanModel* plan) : plan_(plan) {
   spec_.name = "plan.complete_task";
   spec_.description = "Complete an active task.";
-  spec_.parameters_json =
-      "{"
-      "\"type\":\"object\","
-      "\"properties\":{"
-      "\"id\":{\"type\":\"string\"}"
-      "},"
-      "\"required\":[\"id\"]"
-      "}";
+
+  nlohmann::json root = nlohmann::json::object();
+  root["type"] = "object";
+  root["properties"] = nlohmann::json::object({
+      {"id", nlohmann::json::object({{"type", "string"}})},
+  });
+  root["required"] = nlohmann::json::array({"id"});
+  spec_.parameters_json = agent::json::Dump(root);
 }
 
 const agent::FunctionSpec& PlanCompleteTaskFunction::spec() const { return spec_; }
 
 void PlanCompleteTaskFunction::InvokeAsync(std::string arguments_json, OnDone done) {
-  const std::string id = extract_json_string_or_empty(arguments_json, "id");
-  if (id.empty()) {
+  auto args_opt = agent::json::Parse(arguments_json);
+  if (!args_opt) {
+    std::move(done)("", "invalid JSON arguments");
+    return;
+  }
+
+  auto id = get_string_required(*args_opt, "id");
+  if (!id) {
     std::move(done)("", "Missing argument: id");
     return;
   }
 
-  const SimpleResult r = plan_->CompleteTask(id);
+  const SimpleResult r = plan_->CompleteTask(*id);
   if (!r.error.empty()) {
     std::move(done)("", r.error);
     return;
@@ -375,28 +369,38 @@ void PlanCompleteTaskFunction::InvokeAsync(std::string arguments_json, OnDone do
 PlanAbandonTaskFunction::PlanAbandonTaskFunction(PlanModel* plan) : plan_(plan) {
   spec_.name = "plan.abandon_task";
   spec_.description = "Abandon a task with a required reason.";
-  spec_.parameters_json =
-      "{"
-      "\"type\":\"object\","
-      "\"properties\":{"
-      "\"id\":{\"type\":\"string\"},"
-      "\"reason\":{\"type\":\"string\"}"
-      "},"
-      "\"required\":[\"id\",\"reason\"]"
-      "}";
+
+  nlohmann::json root = nlohmann::json::object();
+  root["type"] = "object";
+  root["properties"] = nlohmann::json::object({
+      {"id", nlohmann::json::object({{"type", "string"}})},
+      {"reason", nlohmann::json::object({{"type", "string"}})},
+  });
+  root["required"] = nlohmann::json::array({"id", "reason"});
+  spec_.parameters_json = agent::json::Dump(root);
 }
 
 const agent::FunctionSpec& PlanAbandonTaskFunction::spec() const { return spec_; }
 
 void PlanAbandonTaskFunction::InvokeAsync(std::string arguments_json, OnDone done) {
-  const std::string id = extract_json_string_or_empty(arguments_json, "id");
-  const std::string reason = extract_json_string_or_empty(arguments_json, "reason");
-  if (id.empty()) {
-    std::move(done)("", "Missing argument: id");
+  auto args_opt = agent::json::Parse(arguments_json);
+  if (!args_opt) {
+    std::move(done)("", "invalid JSON arguments");
     return;
   }
 
-  const SimpleResult r = plan_->AbandonTask(id, reason);
+  auto id = get_string_required(*args_opt, "id");
+  auto reason = get_string_required(*args_opt, "reason");
+  if (!id) {
+    std::move(done)("", "Missing argument: id");
+    return;
+  }
+  if (!reason) {
+    std::move(done)("", "Missing argument: reason");
+    return;
+  }
+
+  const SimpleResult r = plan_->AbandonTask(*id, *reason);
   if (!r.error.empty()) {
     std::move(done)("", r.error);
     return;
@@ -408,26 +412,32 @@ void PlanAbandonTaskFunction::InvokeAsync(std::string arguments_json, OnDone don
 PlanRemoveTaskFunction::PlanRemoveTaskFunction(PlanModel* plan) : plan_(plan) {
   spec_.name = "plan.remove_task";
   spec_.description = "Remove a task and its subtree; also removes downstream dependent subtrees.";
-  spec_.parameters_json =
-      "{"
-      "\"type\":\"object\","
-      "\"properties\":{"
-      "\"id\":{\"type\":\"string\"}"
-      "},"
-      "\"required\":[\"id\"]"
-      "}";
+
+  nlohmann::json root = nlohmann::json::object();
+  root["type"] = "object";
+  root["properties"] = nlohmann::json::object({
+      {"id", nlohmann::json::object({{"type", "string"}})},
+  });
+  root["required"] = nlohmann::json::array({"id"});
+  spec_.parameters_json = agent::json::Dump(root);
 }
 
 const agent::FunctionSpec& PlanRemoveTaskFunction::spec() const { return spec_; }
 
 void PlanRemoveTaskFunction::InvokeAsync(std::string arguments_json, OnDone done) {
-  const std::string id = extract_json_string_or_empty(arguments_json, "id");
-  if (id.empty()) {
+  auto args_opt = agent::json::Parse(arguments_json);
+  if (!args_opt) {
+    std::move(done)("", "invalid JSON arguments");
+    return;
+  }
+
+  auto id = get_string_required(*args_opt, "id");
+  if (!id) {
     std::move(done)("", "Missing argument: id");
     return;
   }
 
-  const RemoveTaskResult r = plan_->RemoveTask(id);
+  const RemoveTaskResult r = plan_->RemoveTask(*id);
   if (!r.error.empty()) {
     std::move(done)("", r.error);
     return;
@@ -439,26 +449,32 @@ void PlanRemoveTaskFunction::InvokeAsync(std::string arguments_json, OnDone done
 PlanClearSubtasksFunction::PlanClearSubtasksFunction(PlanModel* plan) : plan_(plan) {
   spec_.name = "plan.clear_subtasks";
   spec_.description = "Clear all subtasks under a parent (deletes entire subtask subtree).";
-  spec_.parameters_json =
-      "{"
-      "\"type\":\"object\","
-      "\"properties\":{"
-      "\"parent_id\":{\"type\":\"string\"}"
-      "},"
-      "\"required\":[\"parent_id\"]"
-      "}";
+
+  nlohmann::json root = nlohmann::json::object();
+  root["type"] = "object";
+  root["properties"] = nlohmann::json::object({
+      {"parent_id", nlohmann::json::object({{"type", "string"}})},
+  });
+  root["required"] = nlohmann::json::array({"parent_id"});
+  spec_.parameters_json = agent::json::Dump(root);
 }
 
 const agent::FunctionSpec& PlanClearSubtasksFunction::spec() const { return spec_; }
 
 void PlanClearSubtasksFunction::InvokeAsync(std::string arguments_json, OnDone done) {
-  const std::string parent_id = extract_json_string_or_empty(arguments_json, "parent_id");
-  if (parent_id.empty()) {
+  auto args_opt = agent::json::Parse(arguments_json);
+  if (!args_opt) {
+    std::move(done)("", "invalid JSON arguments");
+    return;
+  }
+
+  auto parent_id = get_string_required(*args_opt, "parent_id");
+  if (!parent_id) {
     std::move(done)("", "Missing argument: parent_id");
     return;
   }
 
-  const ClearSubtasksResult r = plan_->ClearSubtasks(parent_id);
+  const ClearSubtasksResult r = plan_->ClearSubtasks(*parent_id);
   if (!r.error.empty()) {
     std::move(done)("", r.error);
     return;
