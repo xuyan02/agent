@@ -1,3 +1,15 @@
 [submodule "third_party/dust"]
 	path = third_party/dust
 	url = git@github.com:xuyan02/solar-dust.git
+[submodule "third_party/nlohmann_json"]
+	path = third_party/nlohmann_json
+	url = https://github.com/nlohmann/json.git
+[submodule "third_party/curl"]
+	path = third_party/curl
+	url = https://github.com/curl/curl.git
+[submodule "third_party/openssl"]
+	path = third_party/openssl
+	url = https://github.com/openssl/openssl.git
+[submodule "third_party/zlib"]
+	path = third_party/zlib
+	url = https://github.com/madler/zlib.git

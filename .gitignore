@@ -1,11 +1,7 @@
 # Build outputs
 /build/
 
-# vendored dependencies are managed separately (often as git submodules)
-/third_party/curl/
-/third_party/openssl/
-/third_party/zlib/
-/third_party/dust/
+# vendored dependencies are managed as git submodules under third_party/
 
 # CMake
 CMakeFiles/
