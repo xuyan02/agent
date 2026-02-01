@@ -110,7 +110,7 @@ void SimpleAgent::OnToolCalls(std::vector<agent::ToolCall> tool_calls) {
 
   auto* self = this;
 
-  auto exec = std::make_shared<agent::ToolCallExecutor>(
+  tool_call_executor_ = std::make_unique<agent::ToolCallExecutor>(
       this,
       [self](std::string call_id, nlohmann::json out) {
         agent::LlmMessage tool_msg;
@@ -128,10 +128,13 @@ void SimpleAgent::OnToolCalls(std::vector<agent::ToolCall> tool_calls) {
             agent::LlmToolResult{.tool_call_id = std::move(call_id), .content = agent::json::Dump(err)};
         self->history_.push_back(std::move(tool_msg));
       },
-      [self]() mutable { self->StartRequest(); });
+      [self]() mutable {
+        self->tool_call_executor_->Finish();
+        self->tool_call_executor_.reset();
+        self->StartRequest();
+      });
 
-  exec->AddToolCalls(std::move(calls));
-  exec->Finish();
+  tool_call_executor_->AddToolCalls(std::move(calls));
 }
 
 }  // namespace agent

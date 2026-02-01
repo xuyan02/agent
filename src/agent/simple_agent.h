@@ -34,6 +34,7 @@ class SimpleAgent final : public Agent {
   bool busy_{false};
   std::unique_ptr<agent::LlmRequest> req_;
   agent::LlmMessage assistant_msg_;
+  std::unique_ptr<agent::ToolCallExecutor> tool_call_executor_;
 };
 
 }  // namespace agent
