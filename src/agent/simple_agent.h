@@ -10,9 +10,9 @@
 
 namespace agent {
 
-class OneStepAgent final : public Agent {
+class SimpleAgent final : public Agent {
  public:
-  OneStepAgent(agent::Runtime* runtime, const agent::AgentContext* ctx);
+  SimpleAgent(agent::Runtime* runtime, const agent::AgentContext* ctx);
 
   void Run(std::string input,
            dust::OnceFunction<void(std::string answer)> on_done,

@@ -1,16 +1,16 @@
-#include "agent/one_step_agent.h"
+#include "agent/simple_agent.h"
 
 #include <iostream>
 #include <utility>
 
 namespace agent {
 
-OneStepAgent::OneStepAgent(agent::Runtime* runtime, const agent::AgentContext* ctx)
+SimpleAgent::SimpleAgent(agent::Runtime* runtime, const agent::AgentContext* ctx)
     : Agent(runtime), ctx_(ctx) {}
 
-void OneStepAgent::Run(std::string input,
-                       dust::OnceFunction<void(std::string answer)> on_done,
-                       dust::OnceFunction<void(std::string error)> on_error) {
+void SimpleAgent::Run(std::string input,
+                     dust::OnceFunction<void(std::string answer)> on_done,
+                     dust::OnceFunction<void(std::string error)> on_error) {
   if (busy_) {
     on_error("busy");
     return;
@@ -32,7 +32,7 @@ void OneStepAgent::Run(std::string input,
   StartRequest();
 }
 
-void OneStepAgent::StartRequest() {
+void SimpleAgent::StartRequest() {
   assistant_msg_ = agent::LlmMessage{};
   assistant_msg_.role = agent::LlmRole::kAssistant;
 
@@ -91,12 +91,12 @@ void OneStepAgent::StartRequest() {
   }
 }
 
-void OneStepAgent::OnToolCalls(std::vector<agent::LlmToolCall> tool_calls) {
+void SimpleAgent::OnToolCalls(std::vector<agent::LlmToolCall> tool_calls) {
   req_.reset();
   ExecuteToolCalls(/*index=*/0, std::move(tool_calls));
 }
 
-void OneStepAgent::ExecuteToolCalls(size_t index, std::vector<agent::LlmToolCall> tool_calls) {
+void SimpleAgent::ExecuteToolCalls(size_t index, std::vector<agent::LlmToolCall> tool_calls) {
   if (index >= tool_calls.size()) {
     StartRequest();
     return;
@@ -111,19 +111,23 @@ void OneStepAgent::ExecuteToolCalls(size_t index, std::vector<agent::LlmToolCall
     return;
   }
 
-  fn->InvokeAsync(
-      tc.arguments_json, [this, tool_call_id = tc.id, index, tool_calls = std::move(tool_calls)](
-                             std::string out_result_json, std::string out_error) mutable {
-        agent::LlmMessage tool_msg;
-        tool_msg.role = agent::LlmRole::kTool;
-        tool_msg.tool_result = agent::LlmToolResult{
-            .tool_call_id = tool_call_id,
-            .content = out_error.empty() ? out_result_json
-                                         : std::string{"{\"error\":\""} + out_error + "\"}"};
-        history_.push_back(std::move(tool_msg));
+  // dust::OnceFunction has a small inline storage. Avoid capturing large objects.
+  auto remaining = std::make_shared<std::vector<agent::LlmToolCall>>(std::move(tool_calls));
 
-        ExecuteToolCalls(index + 1, std::move(tool_calls));
-      });
+  auto* self = this;
+  fn->InvokeAsync(tc.arguments_json,
+                  [self, tool_call_id = tc.id, index, remaining = std::move(remaining)](
+                      std::string out_result_json, std::string out_error) mutable {
+                    agent::LlmMessage tool_msg;
+                    tool_msg.role = agent::LlmRole::kTool;
+                    tool_msg.tool_result = agent::LlmToolResult{
+                        .tool_call_id = tool_call_id,
+                        .content = out_error.empty() ? out_result_json
+                                                     : std::string{"{\"error\":\""} + out_error + "\"}"};
+                    self->history_.push_back(std::move(tool_msg));
+
+                    self->ExecuteToolCalls(index + 1, std::move(*remaining));
+                  });
 }
 
 }  // namespace agent

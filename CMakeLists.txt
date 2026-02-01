@@ -10,7 +10,12 @@ option(CPP_AGENT_BUILD_TESTS "Build tests" ON)
 
 add_library(cpp_agent_lib
   src/agent/agent.cpp
-  src/agent/one_step_agent.cpp
+  src/agent/intuitive_agent.cpp
+  src/agent/prompt_overrides.cpp
+  src/agent/routing_result.cpp
+  src/agent/shallow_think_agent.cpp
+  src/agent/simple_agent.cpp
+  src/agent/smart_agent.cpp
   src/runtime/runtime.cpp
   src/runtime/tool.cpp
   src/infra/json/json.cpp

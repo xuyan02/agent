@@ -1,5 +1,5 @@
 #include "agent/agent_context.h"
-#include "agent/one_step_agent.h"
+#include "agent/smart_agent.h"
 
 #include "dust/message_loop/linux_message_pump_epoll.h"
 #include "dust/message_loop/message_loop.h"
@@ -34,12 +34,16 @@ class SimpleAgentContext final : public agent::AgentContext {
 int main(int argc, char** argv) {
   std::filesystem::path cfg_path = "config/llm_providers.json";
   std::string model_name;
+  std::string user_input_arg;
 
   if (argc >= 2) {
     cfg_path = argv[1];
   }
   if (argc >= 3) {
     model_name = argv[2];
+  }
+  if (argc >= 4) {
+    user_input_arg = argv[3];
   }
 
   agent::LlmContext llm;
@@ -65,22 +69,10 @@ int main(int argc, char** argv) {
   agent::Runtime runtime(&llm);
 
   const std::string system_prompt =
-      "You are an assistant that first determines whether the user's request is doable.\n"
-      "Possible outcomes: doable / not_doable / needs_more_thought.\n"
-      "Rules:\n"
-      "- Always start with a line beginning with [reason] explaining your judgment.\n"
-      "- You must judge based on your actual capabilities (your tools and other agents you can "
-      "use). Do not claim you can do something if you cannot.\n"
-      "- If the user's request is ambiguous or requires clarification (goal unclear, missing "
-      "constraints), treat it as needs_more_thought.\n"
-      "- If the user input is a greeting (e.g. \"hi\", \"hello\"), treat it as doable.\n"
-      "- If the user input is meaningless / gibberish, treat it as not_doable.\n"
-      "- If outcome is doable or not_doable: then directly provide the final response, starting "
-      "with [answer].\n"
-      "- If outcome is needs_more_thought: output [thinking] (and do not provide an answer yet).\n";
+      "You are an assistant.\n";
 
   SimpleAgentContext ctx(model_name, system_prompt);
-  agent::OneStepAgent one_step(&runtime, &ctx);
+  agent::SmartAgent one_step(&runtime, &ctx);
 
   dust::MessageLoop loop(std::make_unique<dust::LinuxMessagePumpEpoll>());
 
@@ -97,14 +89,12 @@ int main(int argc, char** argv) {
                             loop.Quit();
                           }));
 
-  std::cout << "abc" << std::endl;
-  std::string user_input;
-  std::cin >> user_input;
-  std::cout << "elf" << std::endl;
-  if (user_input.empty()) {
-    std::cerr << "no input on stdin" << std::endl;
+  if (user_input_arg.empty()) {
+    std::cerr << "usage: test_one_step_agent [config_path] [model_name] [user_input]" << std::endl;
     return 2;
   }
+
+  std::string user_input = std::move(user_input_arg);
 
   one_step.Run(
       std::move(user_input), dust::OnceFunction<void(std::string)>([&](std::string answer) {
