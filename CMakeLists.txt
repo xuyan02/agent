@@ -9,26 +9,25 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(CPP_AGENT_BUILD_TESTS "Build tests" ON)
 
 add_library(cpp_agent_lib
-  src/agent/agent.cpp
-  src/agent/simple_agent.cpp
-  src/agent/smart/intuitive_agent.cpp
-  src/agent/smart/routing_result.cpp
-  src/agent/smart/shallow_think_agent.cpp
-  src/agent/smart/smart_agent.cpp
-  src/agent/smart/tools/shallow_think_tool.cpp
-  src/runtime/runtime.cpp
-  src/tool/tool.cpp
-  src/tool/tool_call_executor.cpp
-  src/json/json.cpp
-  src/llm/llm_config_loader.cpp
-  src/llm/llm_context.cpp
-  src/llm/openai_provider.cpp
-  src/llm/openai_provider_factory.cpp
-  src/llm/openai_stream_accumulator.cpp
-  src/llm/sse_parser.cpp
-  src/http_async/async_client.cc
-  src/console/cli_console.cpp
+  src/llm/chat_message.cc
+  src/json/json.cc
+  src/llm/openai/openai_provider.cc
+  src/llm/openai/openai_sender.cc
+  src/http/http_client.cc
+  src/tool/tool_spec.cc
+  src/tool/debug_tool.cc
+  src/tool/file_tool.cc
+  src/agent/in_memory_history.cc
+  src/agent/session.cc
+  src/agent/agent_context.cc
+  src/agent/agent_runner.cc
+  src/agent/llm_agent.cc
+  src/agent/tool_call_executor.cc
+  src/config/agent_config.cc
+  src/console/cli_console.cc
 )
+
+
 target_include_directories(cpp_agent_lib PUBLIC src)
 
 # This project is built with C++ exceptions disabled.
@@ -107,7 +106,59 @@ target_include_directories(cpp_agent_lib PUBLIC
 add_executable(agent_cli apps/agent_cli.cc)
 target_link_libraries(agent_cli PRIVATE cpp_agent_lib)
 
+add_executable(test_watch_stdin apps/test_watch_stdin.cc)
+target_link_libraries(test_watch_stdin PRIVATE cpp_agent_lib)
+
+add_executable(test_epoll_raw_stdin apps/test_epoll_raw_stdin.cc)
+
 if(CPP_AGENT_BUILD_TESTS)
   enable_testing()
-  message(STATUS "CPP_AGENT_BUILD_TESTS is ON but tests are disabled temporarily")
+
+  add_executable(test_http_client_invalid tests/http/test_http_client_invalid.cc)
+  target_link_libraries(test_http_client_invalid PRIVATE cpp_agent_lib)
+  add_test(NAME test_http_client_invalid COMMAND test_http_client_invalid)
+
+  add_executable(test_session_defaults tests/test_session_defaults.cc)
+  target_link_libraries(test_session_defaults PRIVATE cpp_agent_lib)
+  add_test(NAME test_session_defaults COMMAND test_session_defaults)
+
+  add_executable(test_session_tool_store tests/test_session_tool_store.cc)
+  target_link_libraries(test_session_tool_store PRIVATE cpp_agent_lib)
+  add_test(NAME test_session_tool_store COMMAND test_session_tool_store)
+
+  add_executable(test_session_create_sender tests/test_session_create_sender.cc)
+  target_link_libraries(test_session_create_sender PRIVATE cpp_agent_lib)
+  add_test(NAME test_session_create_sender COMMAND test_session_create_sender)
+
+  add_executable(test_in_memory_history tests/test_in_memory_history.cc)
+  target_link_libraries(test_in_memory_history PRIVATE cpp_agent_lib)
+  add_test(NAME test_in_memory_history COMMAND test_in_memory_history)
+
+  add_executable(test_llm_agent_send_once tests/test_llm_agent_send_once.cc)
+  target_link_libraries(test_llm_agent_send_once PRIVATE cpp_agent_lib)
+  add_test(NAME test_llm_agent_send_once COMMAND test_llm_agent_send_once)
+
+  add_executable(test_tool_call_executor tests/test_tool_call_executor.cc)
+  target_link_libraries(test_tool_call_executor PRIVATE cpp_agent_lib)
+  add_test(NAME test_tool_call_executor COMMAND test_tool_call_executor)
+
+  add_executable(test_debug_tool tests/test_debug_tool.cc)
+  target_link_libraries(test_debug_tool PRIVATE cpp_agent_lib)
+  add_test(NAME test_debug_tool COMMAND test_debug_tool)
+
+  add_executable(test_file_tool tests/test_file_tool.cc)
+  target_link_libraries(test_file_tool PRIVATE cpp_agent_lib)
+  add_test(NAME test_file_tool COMMAND test_file_tool)
+
+  add_executable(test_agent_context_defaults tests/test_agent_context_defaults.cc)
+  target_link_libraries(test_agent_context_defaults PRIVATE cpp_agent_lib)
+  add_test(NAME test_agent_context_defaults COMMAND test_agent_context_defaults)
+
+  add_executable(test_agent_runner_wiring tests/test_agent_runner_wiring.cc)
+  target_link_libraries(test_agent_runner_wiring PRIVATE cpp_agent_lib)
+
+  add_executable(test_agent_config_yaml tests/test_agent_config_yaml.cc)
+  target_link_libraries(test_agent_config_yaml PRIVATE cpp_agent_lib)
+  add_test(NAME test_agent_runner_wiring COMMAND test_agent_runner_wiring)
+  add_test(NAME test_agent_config_yaml COMMAND test_agent_config_yaml)
 endif()

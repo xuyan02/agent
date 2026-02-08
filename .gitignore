@@ -26,3 +26,6 @@ compile_commands.json
 # ~/.cpp-agent/settings.json is outside repo; keep repo clean if copied in
 settings.json
 config/llm_providers.json
+
+# Local agent workspace
+.agent/

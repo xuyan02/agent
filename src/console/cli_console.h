@@ -1,6 +1,7 @@
 #pragma once
 
-#include "interfaces/iconsole.h"
+
+#include "console/console.h"
 
 #include "dust/message_loop/message_loop.h"
 
@@ -8,14 +9,14 @@
 
 namespace agent {
 
-class CliConsole final : public agent::IConsole {
+class CliConsole final : public Console {
 public:
   void PrintLine(const std::string& s) override;
   void Print(const std::string& s) override;
   void SetOnLine(dust::Function<void(std::string)> on_line) override;
 
-  // Starts watching stdin (fd=0) on the given loop.
-  void AttachToMessageLoop(dust::MessageLoop& loop);
+  // Starts watching stdin (fd=0) on MessageLoop::Current().
+  void Start();
 
 private:
   void OnStdinReadable();
