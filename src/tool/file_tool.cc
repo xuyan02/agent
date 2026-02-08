@@ -25,8 +25,10 @@ constexpr const char* kReadName = "file.read";
 constexpr const char* kGlobName = "file.glob";
 constexpr const char* kGrepName = "file.grep";
 constexpr const char* kEditName = "file.edit";
+constexpr const char* kWriteName = "file.write";
 
 constexpr size_t kMaxReadBytes = 256 * 1024;
+constexpr size_t kMaxWriteBytes = 256 * 1024;
 constexpr size_t kMaxGrepMatches = 200;
 constexpr size_t kMaxGlobMatches = 2000;
 
@@ -190,8 +192,7 @@ FileTool::FileTool() {
   {
     FunctionSpec::Builder fb;
     fb.SetName(kEditName)
-        .SetDescription(
-            "Replace a literal substring in a file under workspace; write is not supported");
+        .SetDescription("Replace a literal substring in a file under workspace");
     {
       FieldSpec::Builder p;
       p.SetName("path")
@@ -223,6 +224,38 @@ FileTool::FileTool() {
           .SetRequired(false)
           .SetType(TypeSpecImplBoolean::Builder().Build());
       fb.AddParam(std::move(all).Build());
+    }
+    tb.AddFunction(std::move(fb).Build());
+  }
+
+  {
+    FunctionSpec::Builder fb;
+    fb.SetName(kWriteName)
+        .SetDescription(
+            "Write a UTF-8 text file under workspace (create or overwrite with overwrite=true)");
+    {
+      FieldSpec::Builder p;
+      p.SetName("path")
+          .SetDescription("Relative path under workspace")
+          .SetRequired(true)
+          .SetType(TypeSpecImplString::Builder().Build());
+      fb.AddParam(std::move(p).Build());
+    }
+    {
+      FieldSpec::Builder c;
+      c.SetName("content")
+          .SetDescription("File content (UTF-8)")
+          .SetRequired(true)
+          .SetType(TypeSpecImplString::Builder().Build());
+      fb.AddParam(std::move(c).Build());
+    }
+    {
+      FieldSpec::Builder o;
+      o.SetName("overwrite")
+          .SetDescription("If true, allow overwriting an existing file")
+          .SetRequired(false)
+          .SetType(TypeSpecImplBoolean::Builder().Build());
+      fb.AddParam(std::move(o).Build());
     }
     tb.AddFunction(std::move(fb).Build());
   }
@@ -454,7 +487,51 @@ dust::FuturePtr<nlohmann::json> FileTool::Invoke(dust::RefPtr<AgentContext> cont
     return dust::Just(Ok(std::move(data)));
   }
 
-  // file.write intentionally not supported.
+  if (function_name == kWriteName) {
+    std::string e;
+    auto abs = ResolveWorkspaceRelative(workspace, args, "path", &e);
+    if (!abs)
+      return dust::Just(Err(std::move(e)));
+
+    std::error_code ec;
+    const auto rel = std::filesystem::relative(*abs, workspace, ec);
+    if (!ec && IsIgnoredPath(rel))
+      return dust::Just(Err("path is ignored"));
+
+    auto content = json::GetString(args, "content");
+    if (!content)
+      return dust::Just(Err("missing 'content'"));
+    if (content->size() > kMaxWriteBytes)
+      return dust::Just(Err("content too large"));
+
+    bool overwrite = false;
+    if (args.contains("overwrite") && args["overwrite"].is_boolean())
+      overwrite = args["overwrite"].get<bool>();
+
+    if (std::filesystem::exists(*abs, ec)) {
+      if (std::filesystem::is_directory(*abs, ec))
+        return dust::Just(Err("path is a directory"));
+      if (!overwrite)
+        return dust::Just(Err("file exists (set overwrite=true)"));
+    }
+
+    // Ensure parent directories exist.
+    std::filesystem::create_directories(abs->parent_path(), ec);
+    if (ec)
+      return dust::Just(Err("failed to create parent directories"));
+
+    std::ofstream f(*abs, std::ios::out | std::ios::binary | std::ios::trunc);
+    if (!f.is_open())
+      return dust::Just(Err("failed to open for write"));
+    f.write(content->data(), static_cast<std::streamsize>(content->size()));
+
+    nlohmann::json data;
+    data["path"] = rel.generic_string();
+    data["bytes"] = static_cast<int>(content->size());
+    data["overwrote"] = overwrite;
+    return dust::Just(Ok(std::move(data)));
+  }
+
   return nullptr;
 }
 

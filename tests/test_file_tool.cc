@@ -139,6 +139,60 @@ int main() {
     assert(found);
   }
 
+  // write
+  {
+    dust::PollContext pc{dust::WakerHandle()};
+
+    nlohmann::json w;
+    w["path"] = "src/new.txt";
+    w["content"] = "hello";
+    auto fut = tool->Invoke(ctx, "file.write", w);
+    assert(fut);
+    auto out = fut->PollOnce(pc).TakeReady();
+    assert(out["ok"] == true);
+
+    // default overwrite=false should fail
+    nlohmann::json w2;
+    w2["path"] = "src/new.txt";
+    w2["content"] = "world";
+    auto fut2 = tool->Invoke(ctx, "file.write", w2);
+    auto out2 = fut2->PollOnce(pc).TakeReady();
+    assert(out2["ok"] == false);
+
+    // overwrite=true should succeed
+    nlohmann::json w3;
+    w3["path"] = "src/new.txt";
+    w3["content"] = "world";
+    w3["overwrite"] = true;
+    auto fut3 = tool->Invoke(ctx, "file.write", w3);
+    auto out3 = fut3->PollOnce(pc).TakeReady();
+    assert(out3["ok"] == true);
+
+    // verify overwrite via read
+    nlohmann::json rnew;
+    rnew["path"] = "src/new.txt";
+    auto rfnew = tool->Invoke(ctx, "file.read", rnew);
+    auto out_new = rfnew->PollOnce(pc).TakeReady();
+    assert(out_new["ok"] == true);
+    assert(out_new["data"]["content"].get<std::string>().find("world") != std::string::npos);
+
+    // ignored path should fail
+    nlohmann::json w4;
+    w4["path"] = "build/nope.txt";
+    w4["content"] = "x";
+    auto fut4 = tool->Invoke(ctx, "file.write", w4);
+    auto out4 = fut4->PollOnce(pc).TakeReady();
+    assert(out4["ok"] == false);
+
+    // traversal should fail
+    nlohmann::json w5;
+    w5["path"] = "../escape.txt";
+    w5["content"] = "x";
+    auto fut5 = tool->Invoke(ctx, "file.write", w5);
+    auto out5 = fut5->PollOnce(pc).TakeReady();
+    assert(out5["ok"] == false);
+  }
+
   // edit
   {
     nlohmann::json args;
