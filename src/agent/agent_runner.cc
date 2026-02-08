@@ -43,6 +43,10 @@ void AgentRunner::Run(dust::RefPtr<Session> session, std::unique_ptr<Console> co
     return;
 
   console_->SetOnLine([this, ctx = std::move(ctx)](std::string line) mutable {
+    const char* dbg = std::getenv("CPP_AGENT_DEBUG_AGENT_RUNNER");
+    const bool debug = dbg && dbg[0] != 0;
+    if (debug)
+      std::fprintf(stderr, "[cpp-agent.runner] on_line len=%zu\n", line.size());
     if (!ctx || !ctx->history() || !ctx->session())
       return;
 
@@ -69,9 +73,15 @@ void AgentRunner::Run(dust::RefPtr<Session> session, std::unique_ptr<Console> co
           : runner_(runner), ctx_(std::move(ctx)), user_(std::move(user)) {}
 
       dust::Poll<dust::Result<void, std::string>> PollOnce(dust::PollContext& ctx) override {
+        const char* dbg = std::getenv("CPP_AGENT_DEBUG_AGENT_RUNNER");
+        const bool debug = dbg && dbg[0] != 0;
         dust::PollContext child_ctx(ctx.waker());
 
         while (state_ != State::kDone) {
+          if (debug)
+            std::fprintf(stderr,
+                         "[cpp-agent.runner] PollOnce loop state=%d\n",
+                         static_cast<int>(state_));
           switch (state_) {
             case State::kInit: {
               if (!runner_ || !runner_->agent() || !ctx_ || !ctx_->history()) {
@@ -120,12 +130,49 @@ void AgentRunner::Run(dust::RefPtr<Session> session, std::unique_ptr<Console> co
               if (polled.is_pending())
                 return dust::Poll<dust::Result<void, std::string>>::Pending();
 
+              if (debug)
+                std::fprintf(stderr, "[cpp-agent.runner] kAwait2 -> Ready\n");
+
               auto r = polled.TakeReady();
               run_ = nullptr;
               if (!r.ok()) {
                 done_ = dust::Result<void, std::string>::Err(r.error());
                 state_ = State::kDone;
                 break;
+              }
+
+              if (debug && ctx_ && ctx_->history()) {
+                auto last = ctx_->history()->GetLast(ctx_);
+                if (!last) {
+                  std::fprintf(stderr, "[cpp-agent.runner] history last: (null)\n");
+                } else {
+                  std::fprintf(stderr,
+                               "[cpp-agent.runner] history last: role=%d kind=%d\n",
+                               static_cast<int>(last->role()),
+                               last->content() ? static_cast<int>(last->content()->kind()) : 0);
+                }
+              }
+
+              // Interactive echo: print the latest assistant text, even if the most recent
+              // history entry is a tool call / tool result.
+              if (runner_ && runner_->console_ && ctx_ && ctx_->history()) {
+                auto all = ctx_->history()->GetAll(ctx_);
+                if (all) {
+                  auto polled_all = all->PollOnce(child_ctx);
+                  if (polled_all.is_ready()) {
+                    auto msgs = polled_all.TakeReady();
+                    for (auto it = msgs.rbegin(); it != msgs.rend(); ++it) {
+                      const auto& m = *it;
+                      if (!m || m->role() != ChatRole::kAssistant)
+                        continue;
+                      if (!m->content() || m->content()->kind() != ChatContent::Kind::kText)
+                        continue;
+                      auto* text = static_cast<const ChatContent::Text*>(m->content());
+                      runner_->console_->PrintLine(text->text());
+                      break;
+                    }
+                  }
+                }
               }
 
               done_ = dust::Result<void, std::string>::Ok();

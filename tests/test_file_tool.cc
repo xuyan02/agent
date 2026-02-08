@@ -71,13 +71,15 @@ int main() {
     assert(out["ok"] == false);
   }
 
-  // glob: exact match and ignore build/
+  // glob: exact match, **/*, and ignore build/
   {
+    dust::PollContext pc{dust::WakerHandle()};
+
+    // exact match
     nlohmann::json args;
     args["pattern"] = "src/a.txt";
     auto fut = tool->Invoke(ctx, "file.glob", args);
     assert(fut);
-    dust::PollContext pc{dust::WakerHandle()};
     auto out = fut->PollOnce(pc).TakeReady();
     assert(out["ok"] == true);
     const auto& paths = out["data"]["paths"];
@@ -89,6 +91,26 @@ int main() {
     }
     assert(saw_src);
 
+    // match-all
+    nlohmann::json all;
+    all["pattern"] = "**/*";
+    auto fut_all = tool->Invoke(ctx, "file.glob", all);
+    assert(fut_all);
+    auto out_all = fut_all->PollOnce(pc).TakeReady();
+    assert(out_all["ok"] == true);
+    bool saw_src_all = false;
+    bool saw_build_all = false;
+    for (const auto& p : out_all["data"]["paths"]) {
+      const std::string s = p.get<std::string>();
+      if (s == "src/a.txt")
+        saw_src_all = true;
+      if (s == "build/ignored.txt")
+        saw_build_all = true;
+    }
+    assert(saw_src_all);
+    assert(!saw_build_all);
+
+    // ignored file should not match
     nlohmann::json args2;
     args2["pattern"] = "build/ignored.txt";
     auto fut2 = tool->Invoke(ctx, "file.glob", args2);

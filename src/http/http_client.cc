@@ -184,30 +184,57 @@ class RequestFuture final : public dust::Future<dust::Result<HttpResponse, HttpE
     }
 
     const int actions = CurlWhatToActions(what);
+    // curl may request OUT while connecting; once connected it will usually switch to IN.
+    // We rely on this to avoid EPOLLOUT wake storms.
     fd_actions_[fd] = actions;
 
     dust::WatchCallbacks cbs;
     cbs.on_readable = dust::Closure([this, fd]() {
       io_ready_ = true;
+      const int actions = fd_actions_.count(fd) ? fd_actions_[fd] : 0;
+      if (!(actions & CURL_POLL_IN)) {
+        if (DebugHttp())
+          std::fprintf(stderr, "[cpp-agent.http2] fd readable: ignored (actions=0x%x)\n",
+                       actions);
+        return;
+      }
       if (DebugHttp())
-        std::fprintf(stderr, "[cpp-agent.http2] fd readable: Wake\n");
+        std::fprintf(stderr, "[cpp-agent.http2] fd readable: Wake (actions=0x%x)\n", actions);
       Pump(fd, CURL_CSELECT_IN);
       waker_.Wake();
     });
     cbs.on_writable = dust::Closure([this, fd]() {
       io_ready_ = true;
+      const int actions = fd_actions_.count(fd) ? fd_actions_[fd] : 0;
+      if (!(actions & CURL_POLL_OUT)) {
+        if (DebugHttp())
+          std::fprintf(stderr, "[cpp-agent.http2] fd writable: ignored (actions=0x%x)\n",
+                       actions);
+        return;
+      }
+
+      // IMPORTANT: a socket can remain level-triggered writable for long periods. Calling Wake()
+      // here would spin the executor. Instead, just notify curl; it will request new interests via
+      // socket_cb (which updates WatchFd) and/or arm timers via timer_cb.
       if (DebugHttp())
-        std::fprintf(stderr, "[cpp-agent.http2] fd writable: Wake\n");
+        std::fprintf(stderr, "[cpp-agent.http2] fd writable: Pump (actions=0x%x)\n", actions);
       Pump(fd, CURL_CSELECT_OUT);
-      waker_.Wake();
     });
     cbs.on_error = dust::Closure([this, fd]() {
       io_ready_ = true;
+      const int actions = fd_actions_.count(fd) ? fd_actions_[fd] : 0;
       if (DebugHttp())
-        std::fprintf(stderr, "[cpp-agent.http2] fd error: Wake\n");
+        std::fprintf(stderr, "[cpp-agent.http2] fd error: Wake (actions=0x%x)\n", actions);
       Pump(fd, CURL_CSELECT_ERR);
       waker_.Wake();
     });
+
+    // MessageLoop computes epoll interests from which callbacks are non-empty.
+    // Respect curl's requested directions by only installing the requested callbacks.
+    if (!(actions & CURL_POLL_IN))
+      cbs.on_readable = dust::Closure();
+    if (!(actions & CURL_POLL_OUT))
+      cbs.on_writable = dust::Closure();
 
     loop_->WatchFd(fd, std::move(cbs));
     if (DebugHttp()) {
@@ -238,13 +265,24 @@ class RequestFuture final : public dust::Future<dust::Result<HttpResponse, HttpE
     loop_->task_runner()->PostDelayedTask(
         dust::Duration::FromMilliseconds(timeout_ms),
         dust::OnceClosure([this, gen]() {
-          if (!alive_)
+          if (!alive_) {
+            if (DebugHttp())
+              std::fprintf(stderr, "[cpp-agent.http2] timer fire: drop (dead) gen=%llu\n",
+                           static_cast<unsigned long long>(gen));
             return;
-          if (timer_gen_ != gen)
+          }
+          if (timer_gen_ != gen) {
+            if (DebugHttp())
+              std::fprintf(stderr,
+                           "[cpp-agent.http2] timer fire: drop (stale) gen=%llu cur=%llu\n",
+                           static_cast<unsigned long long>(gen),
+                           static_cast<unsigned long long>(timer_gen_));
             return;
+          }
           io_ready_ = true;
           if (DebugHttp())
-            std::fprintf(stderr, "[cpp-agent.http2] timer fire: Wake\n");
+            std::fprintf(stderr, "[cpp-agent.http2] timer fire: Pump+Wake gen=%llu\n",
+                         static_cast<unsigned long long>(gen));
           Pump(CURL_SOCKET_TIMEOUT, 0);
           waker_.Wake();
         }));
@@ -332,6 +370,18 @@ class RequestFuture final : public dust::Future<dust::Result<HttpResponse, HttpE
 
     int msgs = 0;
     while (CURLMsg* msg = curl_multi_info_read(multi_, &msgs)) {
+      if (DebugHttp()) {
+        const char* msg_name = "?";
+        if (msg->msg == CURLMSG_DONE)
+          msg_name = "DONE";
+        std::fprintf(stderr,
+                     "[cpp-agent.http2] info_read msg=%s easy=%p self_easy=%p result=%d\n",
+                     msg_name,
+                     msg->easy_handle,
+                     easy_,
+                     msg->data.result);
+      }
+
       if (msg->msg != CURLMSG_DONE)
         continue;
       if (msg->easy_handle != easy_)
@@ -348,7 +398,12 @@ class RequestFuture final : public dust::Future<dust::Result<HttpResponse, HttpE
         SetDone(dust::Result<HttpResponse, HttpError>::Ok(std::move(response_)));
       }
 
+      // Make sure the next PollOnce observes completion without relying on further IO events.
+      io_ready_ = true;
       CancelAndTeardown();
+      if (DebugHttp())
+        std::fprintf(stderr, "[cpp-agent.http2] DONE: Wake (waker=%d)\n", waker_ ? 1 : 0);
+      waker_.Wake();
       return;
     }
   }

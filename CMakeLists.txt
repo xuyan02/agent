@@ -17,6 +17,7 @@ add_library(cpp_agent_lib
   src/tool/tool_spec.cc
   src/tool/debug_tool.cc
   src/tool/file_tool.cc
+  src/tool/shell_tool.cc
   src/agent/in_memory_history.cc
   src/agent/session.cc
   src/agent/agent_context.cc
@@ -149,6 +150,10 @@ if(CPP_AGENT_BUILD_TESTS)
   add_executable(test_file_tool tests/test_file_tool.cc)
   target_link_libraries(test_file_tool PRIVATE cpp_agent_lib)
   add_test(NAME test_file_tool COMMAND test_file_tool)
+
+  add_executable(test_shell_tool tests/test_shell_tool.cc)
+  target_link_libraries(test_shell_tool PRIVATE cpp_agent_lib)
+  add_test(NAME test_shell_tool COMMAND test_shell_tool)
 
   add_executable(test_agent_context_defaults tests/test_agent_context_defaults.cc)
   target_link_libraries(test_agent_context_defaults PRIVATE cpp_agent_lib)

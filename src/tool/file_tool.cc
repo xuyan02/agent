@@ -293,11 +293,24 @@ dust::FuturePtr<nlohmann::json> FileTool::Invoke(dust::RefPtr<AgentContext> cont
       const std::string pat = *pattern;
 
       bool match = false;
-      if (pat.rfind("**/", 0) == 0) {
+      if (pat == "**/*") {
+        match = true;
+      } else if (pat.rfind("**/", 0) == 0) {
         const std::string suffix = pat.substr(3);
-        if (rel_s.size() >= suffix.size() &&
-            rel_s.compare(rel_s.size() - suffix.size(), suffix.size(), suffix) == 0)
+        if (suffix == "*") {
           match = true;
+        } else if (suffix.rfind("*.", 0) == 0) {
+          // Support "**/*.ext".
+          const std::string ext = suffix.substr(1);  // ".ext"
+          if (rel_s.size() >= ext.size() &&
+              rel_s.compare(rel_s.size() - ext.size(), ext.size(), ext) == 0)
+            match = true;
+        } else {
+          // Support "**/name" and exact suffix matches.
+          if (rel_s.size() >= suffix.size() &&
+              rel_s.compare(rel_s.size() - suffix.size(), suffix.size(), suffix) == 0)
+            match = true;
+        }
       } else {
         // Exact match.
         match = (rel_s == pat);

@@ -8,6 +8,7 @@
 #include "llm/openai/openai_provider.h"
 #include "tool/debug_tool.h"
 #include "tool/file_tool.h"
+#include "tool/shell_tool.h"
 
 #include "dust/message_loop/linux_message_pump_epoll.h"
 #include "dust/message_loop/message_loop.h"
@@ -79,12 +80,15 @@ int main(int argc, char** argv) {
     return 1;
   }
 
+  std::cerr << "workspace_path: " << workspace << "\n";
+
   agent::Session::Builder session_builder;
   session_builder.SetWorkspacePath(workspace);
   session_builder.SetAgentPath(agent_dir);
   session_builder.SetDefaultModel(cfg->model);
   session_builder.AddTool(dust::MakeRefPtr<agent::DebugTool>());
   session_builder.AddTool(dust::MakeRefPtr<agent::FileTool>());
+  session_builder.AddTool(dust::MakeRefPtr<agent::ShellTool>());
 
   if (cfg->openai) {
     session_builder.AddLlmProvider(std::make_unique<agent::OpenAiProvider>(
@@ -100,6 +104,9 @@ int main(int argc, char** argv) {
 
   if (!input.empty()) {
     // Single-shot mode: no stdin watch.
+    auto console = std::make_unique<agent::CliConsole>();
+    auto* raw_console = console.get();
+    runner.Run(session, std::move(console));
     // Preflight: ensure sender can be created AND that immediate failures are surfaced without
     // entering loop.Run(). Note: low-level IO futures require MessageLoop::Current().
     {
@@ -155,8 +162,13 @@ int main(int argc, char** argv) {
       RunOnceFuture(agent::AgentRunner* runner,
                    dust::RefPtr<agent::AgentContext> ctx,
                    dust::MessageLoop* loop,
+                   agent::Console* console,
                    std::string input)
-          : runner_(runner), ctx_(std::move(ctx)), loop_(loop), input_(std::move(input)) {}
+          : runner_(runner),
+            ctx_(std::move(ctx)),
+            loop_(loop),
+            console_(console),
+            input_(std::move(input)) {}
 
       dust::Poll<void> PollOnce(dust::PollContext& ctx) override {
         if (DebugAgentCli()) {
@@ -273,7 +285,10 @@ int main(int argc, char** argv) {
               }
 
               auto* text = static_cast<const agent::ChatContent::Text*>(last->content());
-              std::cout << text->text() << "\n";
+              if (console_)
+                console_->PrintLine(text->text());
+              else
+                std::cout << text->text() << "\n";
               Succeed();
               return dust::Poll<void>::Ready();
             }
@@ -309,6 +324,7 @@ int main(int argc, char** argv) {
       agent::AgentRunner* runner_ = nullptr;
       dust::RefPtr<agent::AgentContext> ctx_;
       dust::MessageLoop* loop_ = nullptr;
+      agent::Console* console_ = nullptr;
       std::string input_;
 
       bool done_ = false;
@@ -317,7 +333,7 @@ int main(int argc, char** argv) {
       dust::FuturePtr<dust::Result<void, std::string>> run_;
     };
 
-    auto f = dust::MakeRefPtr<RunOnceFuture>(&runner, ctx, &loop, std::move(input));
+    auto f = dust::MakeRefPtr<RunOnceFuture>(&runner, ctx, &loop, raw_console, std::move(input));
     loop.executor()->Spawn(std::move(f));
 
     loop.Run();
